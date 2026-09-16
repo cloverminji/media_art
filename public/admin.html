@@ -100,6 +100,138 @@
         </div>
       </section>
 
+      <!-- Section 4: Custom Coloring Templates Management -->
+      <section class="admin-card">
+        <div class="card-header">
+          <h2>🎨 키오스크 색칠 도안 추가 & 관리</h2>
+          <span class="card-sub">신규 관광지 캐릭터 도안을 업로드하여 키오스크 단말기 도안 목록에 실시간 반영합니다.</span>
+        </div>
+
+        <div class="template-mgr-layout">
+          <!-- Upload Form -->
+          <div class="template-upload-form">
+            <div class="upload-dropzone" id="template-dropzone">
+              <input type="file" id="input-template-file" accept="image/png,image/jpeg,image/svg+xml" style="display: none;">
+              <div class="dropzone-content" id="template-dropzone-prompt">
+                <span class="dropzone-icon">🖼️</span>
+                <span class="dropzone-text">도안 이미지 파일 선택 (PNG / JPG / SVG)</span>
+                <span class="dropzone-sub">클릭하거나 파일을 드래그하여 올려주세요</span>
+              </div>
+              <div class="dropzone-preview" id="template-dropzone-preview" style="display: none;">
+                <img id="img-template-preview" src="" alt="도안 미리보기">
+                <button type="button" class="btn-change-file" id="btn-change-template-file">변경</button>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="input-template-name">도안 명칭:</label>
+                <input type="text" id="input-template-name" placeholder="예: 한라산 꽃사슴, 돌하르방 삼춘">
+              </div>
+
+              <div class="form-group">
+                <label for="input-template-icon">대표 아이콘 (이모지):</label>
+                <input type="text" id="input-template-icon" placeholder="예: 🦌, 🗿, 🌺, 🦊" value="🎨" maxlength="4">
+              </div>
+
+              <div class="form-group">
+                <label for="select-template-motion">기본 모션 타입:</label>
+                <select id="select-template-motion" class="admin-select">
+                  <option value="walk">🚶 지면 보행 (Walk)</option>
+                  <option value="swim">🌊 해양 유영 (Swim)</option>
+                  <option value="space">✨ 무중력 부유 (Float)</option>
+                </select>
+              </div>
+            </div>
+
+            <button type="button" id="btn-submit-template" class="btn-primary-action">
+              <span>➕</span> 키오스크 도안으로 등록 및 실시간 전파
+            </button>
+          </div>
+
+          <!-- Current Templates List -->
+          <div class="current-templates-section">
+            <div class="section-sub-header">
+              <h3>현재 운영 중인 도안 목록</h3>
+              <span id="badge-template-count" class="badge">4개 운영 중</span>
+            </div>
+            <div id="admin-templates-grid" class="admin-templates-grid">
+              <!-- Dynamically populated via JS -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 5: Animated Drawings File Import & Direct Wall Spawn -->
+      <section class="admin-card">
+        <div class="card-header">
+          <h2>🦴 Animated Drawings 파일 업로드 & 즉시 송출</h2>
+          <span class="card-sub">Meta Animated Drawings 프로젝트 파일(PNG + YAML/JSON 또는 .ZIP)을 업로드하여 미디어월에 즉시 송출합니다.</span>
+        </div>
+
+        <div class="ad-import-layout">
+          <!-- File Drop Zone -->
+          <div class="ad-dropzone" id="ad-dropzone">
+            <input type="file" id="ad-file-input" multiple accept=".png,.jpg,.jpeg,.yaml,.yml,.json,.zip" style="display: none;">
+            <div class="ad-dropzone-content" id="ad-dropzone-prompt">
+              <span class="ad-dropzone-icon">📦</span>
+              <span class="ad-dropzone-title">Animated Drawings 파일들을 드롭하거나 클릭하세요</span>
+              <span class="ad-dropzone-desc">texture.png + char_cfg.yaml (또는 .zip 압축 패키지, .json 관절 파일)</span>
+              <div class="supported-badges">
+                <span class="file-badge">.PNG</span>
+                <span class="file-badge">.YAML</span>
+                <span class="file-badge">.JSON</span>
+                <span class="file-badge">.ZIP</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Character Motion & Rigging Studio (Visible after file import) -->
+          <div class="ad-preview-card" id="ad-preview-card" style="display: none;">
+            <div class="ad-preview-stage">
+              <canvas id="ad-preview-canvas" width="220" height="220"></canvas>
+              <div class="ad-stage-tag"><span>🦴</span> 관절 리깅 연동됨</div>
+            </div>
+
+            <div class="ad-char-details">
+              <div class="ad-detail-header">
+                <h3 id="ad-char-name">업로드된 캐릭터</h3>
+                <span id="ad-joint-count" class="badge highlight">13 Keypoints</span>
+              </div>
+
+              <div class="ad-info-grid">
+                <div class="info-cell">
+                  <span class="cell-label">출처 파일:</span>
+                  <span class="cell-val" id="ad-source-filename">texture.png + char_cfg.yaml</span>
+                </div>
+                <div class="info-cell">
+                  <span class="cell-label">관절 매핑:</span>
+                  <span class="cell-val highlight" id="ad-rigging-status">Animated Drawings Spec 일치</span>
+                </div>
+              </div>
+
+              <div class="form-group inline-group">
+                <label for="ad-motion-select">미디어월 동작 타입:</label>
+                <select id="ad-motion-select" class="admin-select">
+                  <option value="walk">🚶 자율 루프 보행 (Harmonic Walk)</option>
+                  <option value="swim">🌊 해양 자율 유영 (Harmonic Swim)</option>
+                  <option value="space">🪐 무중력 유영 (Zero-Gravity Drift)</option>
+                </select>
+              </div>
+
+              <div class="ad-action-buttons">
+                <button type="button" id="btn-ad-spawn" class="btn-send-wall">
+                  <span>🚀</span> 미디어월 대형 스크린으로 즉시 송출
+                </button>
+                <button type="button" id="btn-ad-add-template" class="btn-secondary-action">
+                  <span>🎨</span> 키오스크 색칠 도안으로 등록
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Section 3 (PRD P0-3): Screen Optimization & Character Lifecycle -->
       <section class="admin-card">
         <div class="card-header">
@@ -151,6 +283,9 @@
     </div>
   </div>
 
+  <!-- External Parsers for ZIP and YAML -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
   <script src="admin.js"></script>
 </body>
 </html>

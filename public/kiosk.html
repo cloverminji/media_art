@@ -38,7 +38,7 @@
         <!-- Template Selection (visible in template mode) -->
         <div id="template-selector" class="panel-section">
           <label class="section-title">도안 선택</label>
-          <div class="template-grid">
+          <div class="template-grid" id="template-grid">
             <button class="template-card active" data-template="dolphin">
               <span class="tmpl-icon">🐬</span>
               <span class="tmpl-name">제주 돌고래</span>
@@ -121,48 +121,146 @@
       </section>
     </main>
 
-    <!-- AI Animated Preview & Send Modal (PRD P0-1: <5s conversion, P0-3: 1s send) -->
+    <!-- AI Animated Preview & Rigging Modal (PRD P0-1: <5s conversion, P0-3: 1s send) -->
     <div id="preview-modal" class="modal-backdrop">
       <div class="modal-card">
         <div class="modal-header">
-          <h2>🎉 AI 스켈레톤 추출 & 애니메이션 완성!</h2>
-          <button id="btn-close-modal" class="modal-close-btn">&times;</button>
+          <div class="modal-title-group">
+            <span class="modal-badge">AI Rigging Studio</span>
+            <h2>관절 뼈대 추출 & 애니메이션 스튜디오</h2>
+          </div>
+          <button id="btn-close-modal" class="modal-close-btn" title="닫기">&times;</button>
         </div>
 
-        <div class="modal-body">
-          <div class="preview-stage">
-            <canvas id="preview-canvas" width="360" height="360"></canvas>
-            <div id="ai-skeleton-overlay" class="skeleton-tag">
-              <span>🦴</span> 관절/뼈대(Rigging) 자동 매핑 완료
-            </div>
-          </div>
-
-          <div class="preview-details">
-            <div class="info-row">
-              <span class="info-label">AI 처리 엔진:</span>
-              <span class="info-val">Meta Animated Drawings Web Pipeline</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">추출 관절 키포인트:</span>
-              <span id="keypoint-count" class="info-val">12 Keypoints (Head, Limbs, Pelvis)</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">모션 타입:</span>
-              <span id="motion-type-label" class="info-val">자율 루프 보행 (Harmonic Walk)</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">데이터 관리:</span>
-              <span class="info-val highlight">메모리 휘발성 (Zero-Persistence)</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button id="btn-re-edit" class="btn-secondary">다시 그리기</button>
-          <button id="btn-send-wall" class="btn-send">
-            <span class="rocket">🚀</span>
-            <span>대형 스크린으로 전송</span>
+        <!-- Modal Mode Switch Tabs -->
+        <div class="modal-tabs">
+          <button id="tab-rigging" class="modal-tab-btn active">
+            <span>🦴</span> 1. 관절 뼈대 수동 조절
           </button>
+          <button id="tab-preview" class="modal-tab-btn">
+            <span>🎬</span> 2. 모션 미리보기 & 전송
+          </button>
+        </div>
+
+        <!-- Tab 1: Manual Joint Rigging Editor -->
+        <div id="panel-rigging" class="modal-tab-panel active">
+          <div class="rigging-layout">
+            <!-- Left: Interactive Dragging Canvas -->
+            <div class="rigging-stage-wrap">
+              <div class="rigging-stage">
+                <canvas id="rigging-canvas" width="460" height="460"></canvas>
+                <div id="rigging-joint-tooltip" class="joint-tooltip">관절 핀을 터치하거나 드래그하세요</div>
+              </div>
+              <div class="stage-guide">
+                <span class="guide-icon">💡</span>
+                <span>원형 관절 핀을 드래그하여 팔·다리·머리 위치를 그림에 정확히 맞춰보세요!</span>
+              </div>
+            </div>
+
+            <!-- Right: Control Tools & Mini Live Preview -->
+            <div class="rigging-sidebar">
+              <!-- Helper Tools -->
+              <div class="tool-group">
+                <label class="group-title">스마트 보조 도구</label>
+                <div class="tool-btn-grid">
+                  <button id="btn-rig-reset" class="tool-sub-btn" title="AI 자동 매핑 초기 위치로 복원">
+                    <span>🔄</span> 자동 매핑 초기화
+                  </button>
+                  <button id="btn-rig-mirror" class="tool-sub-btn" title="척추 기준으로 좌우 팔다리 대칭 정렬">
+                    <span>✨</span> 좌우 대칭 맞춤
+                  </button>
+                </div>
+              </div>
+
+              <!-- Anatomy Presets -->
+              <div class="tool-group">
+                <label class="group-title">체형 프리셋 원클릭 적용</label>
+                <div class="preset-chips">
+                  <button class="preset-chip active" data-preset="humanoid">🧑 사람형</button>
+                  <button class="preset-chip" data-preset="chibi">🍊 동글이</button>
+                  <button class="preset-chip" data-preset="dolphin">🐬 돌고래</button>
+                  <button class="preset-chip" data-preset="turtle">🐢 거북이</button>
+                </div>
+              </div>
+
+              <!-- Joint Color Legend -->
+              <div class="tool-group">
+                <label class="group-title">관절 부위 구분</label>
+                <div class="joint-legend-grid">
+                  <span class="legend-item"><span class="dot gold"></span>머리/목</span>
+                  <span class="legend-item"><span class="dot cyan"></span>왼쪽 팔</span>
+                  <span class="legend-item"><span class="dot purple"></span>오른쪽 팔</span>
+                  <span class="legend-item"><span class="dot green"></span>골반(중심)</span>
+                  <span class="legend-item"><span class="dot orange"></span>왼쪽 다리</span>
+                  <span class="legend-item"><span class="dot rose"></span>오른쪽 다리</span>
+                </div>
+              </div>
+
+              <!-- Real-time Mini Motion Preview -->
+              <div class="tool-group mini-motion-group">
+                <label class="group-title">실시간 모션 반응</label>
+                <div class="mini-preview-box">
+                  <canvas id="rigging-mini-canvas" width="160" height="160"></canvas>
+                  <span class="mini-tag">실시간 피드백</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button id="btn-re-edit" class="btn-secondary">다시 그리기</button>
+            <button id="btn-goto-preview" class="btn-primary">
+              <span>애니메이션 확인하기</span>
+              <span>▶</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Tab 2: Full Motion Preview & Send -->
+        <div id="panel-preview" class="modal-tab-panel">
+          <div class="modal-body">
+            <div class="preview-stage">
+              <canvas id="preview-canvas" width="360" height="360"></canvas>
+              <div id="ai-skeleton-overlay" class="skeleton-tag">
+                <span>🦴</span> 관절/뼈대(Rigging) 연동 완료
+              </div>
+            </div>
+
+            <div class="preview-details">
+              <div class="info-row">
+                <span class="info-label">AI 처리 엔진:</span>
+                <span class="info-val">Meta Animated Drawings Web Pipeline</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">관절 보정 상태:</span>
+                <span id="keypoint-count" class="info-val highlight">13 Keypoints (수동 보정 반영)</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">모션 타입:</span>
+                <span id="motion-type-label" class="info-val">자율 루프 보행 (Harmonic Walk)</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">데이터 관리:</span>
+                <span class="info-val highlight">메모리 휘발성 (Zero-Persistence)</span>
+              </div>
+
+              <!-- Quick Back to Rigging Edit -->
+              <div class="adjust-callout">
+                <p>팔이나 다리 관절 위치를 더 다듬고 싶으신가요?</p>
+                <button id="btn-back-to-rigging" class="btn-sub-action">
+                  <span>✏️</span> 관절 위치 다시 조절하기
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button id="btn-preview-back" class="btn-secondary">◀ 관절 조절로 이동</button>
+            <button id="btn-send-wall" class="btn-send">
+              <span class="rocket">🚀</span>
+              <span>대형 스크린으로 전송</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

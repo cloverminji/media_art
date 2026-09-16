@@ -42,7 +42,39 @@ function saveConfig(newConfig) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(currentConfig, null, 2), 'utf-8');
 }
 
-app.use(express.json({ limit: '15mb' }));
+// ----------------------------------------------------
+// Custom Coloring Templates Storage (PRD P0-1 & Admin Ext)
+// ----------------------------------------------------
+const TEMPLATES_FILE = path.join(DATA_DIR, 'templates.json');
+const DEFAULT_TEMPLATES = [
+  { id: 'dolphin', name: '제주 돌고래', icon: '🐬', motionType: 'swim', isBuiltin: true },
+  { id: 'tangerine', name: '감귤 요정', icon: '🍊', motionType: 'walk', isBuiltin: true },
+  { id: 'astronaut', name: '우주 탐험가', icon: '🧑‍🚀', motionType: 'walk', isBuiltin: true },
+  { id: 'turtle', name: '바다 거북이', icon: '🐢', motionType: 'swim', isBuiltin: true }
+];
+
+let customTemplates = [];
+if (fs.existsSync(TEMPLATES_FILE)) {
+  try {
+    customTemplates = JSON.parse(fs.readFileSync(TEMPLATES_FILE, 'utf-8'));
+  } catch (err) {
+    console.error('Failed to parse templates.json, resetting to empty:', err);
+    customTemplates = [];
+  }
+} else {
+  fs.writeFileSync(TEMPLATES_FILE, JSON.stringify([], null, 2), 'utf-8');
+}
+
+function getCombinedTemplates() {
+  return [...DEFAULT_TEMPLATES, ...customTemplates];
+}
+
+function saveCustomTemplates() {
+  fs.writeFileSync(TEMPLATES_FILE, JSON.stringify(customTemplates, null, 2), 'utf-8');
+}
+
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Specific route mappings
@@ -70,6 +102,69 @@ app.post('/api/config', (req, res) => {
     config: currentConfig
   });
   res.json({ success: true, config: currentConfig });
+});
+
+// Templates API
+app.get('/api/templates', (req, res) => {
+  res.json({ success: true, templates: getCombinedTemplates() });
+});
+
+app.post('/api/templates', (req, res) => {
+  const { name, icon, motionType, imageUrl, dataUrl, svgData, image, skeleton } = req.body;
+  let imageSource = imageUrl || dataUrl || image;
+
+  if (!imageSource && svgData) {
+    if (typeof svgData === 'string' && svgData.startsWith('data:')) {
+      imageSource = svgData;
+    } else {
+      imageSource = 'data:image/svg+xml;utf8,' + encodeURIComponent(svgData);
+    }
+  }
+
+  if (!name || !imageSource) {
+    return res.status(400).json({ success: false, error: '도안 이름과 이미지 파일이 필요합니다.' });
+  }
+
+  const newTemplate = {
+    id: 'tmpl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+    name: name.trim(),
+    icon: icon ? icon.trim() : '🎨',
+    motionType: motionType || 'walk',
+    imageUrl: imageSource,
+    skeleton: skeleton || null,
+    isBuiltin: false,
+    createdAt: Date.now()
+  };
+
+  customTemplates.push(newTemplate);
+  saveCustomTemplates();
+
+  const allTemplates = getCombinedTemplates();
+  broadcast({
+    type: 'TEMPLATES_UPDATED',
+    templates: allTemplates
+  });
+
+  res.json({ success: true, template: newTemplate, templates: allTemplates });
+});
+
+app.delete('/api/templates/:id', (req, res) => {
+  const { id } = req.params;
+  const initialLen = customTemplates.length;
+  customTemplates = customTemplates.filter(t => t.id !== id);
+
+  if (customTemplates.length === initialLen) {
+    return res.status(404).json({ success: false, error: '해당 도안을 찾을 수 없거나 기본 제공 도안입니다.' });
+  }
+
+  saveCustomTemplates();
+  const allTemplates = getCombinedTemplates();
+  broadcast({
+    type: 'TEMPLATES_UPDATED',
+    templates: allTemplates
+  });
+
+  res.json({ success: true, templates: allTemplates });
 });
 
 // Curated high-resolution web backgrounds & live image search API
@@ -136,10 +231,11 @@ function broadcast(data, excludeWs = null) {
 wss.on('connection', (ws) => {
   ws.clientType = 'unknown';
 
-  // Send initial config to newly connected client
+  // Send initial config and templates to newly connected client
   ws.send(JSON.stringify({
     type: 'INIT_STATE',
-    config: currentConfig
+    config: currentConfig,
+    templates: getCombinedTemplates()
   }));
 
   ws.on('message', (raw) => {

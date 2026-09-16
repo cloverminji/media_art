@@ -232,9 +232,17 @@
       // Facing flip
       ctx.scale(this.facing, 1);
 
+      // Dynamic motion pivot based on customized skeleton
+      let pivotYRatio = 0.5;
+      if (this.skeleton && this.skeleton.pelvis && this.image.naturalHeight > 0) {
+        pivotYRatio = this.skeleton.pelvis.y / this.image.naturalHeight;
+      }
+
       // Meta Animated Drawings Skeletal Motion Simulation
       // Secondary tilt & harmonic bounce
-      const tilt = (this.vx / 100) * 0.08 + Math.sin(this.phase) * 0.06;
+      const isSwim = (this.motionType === 'swim');
+      const tiltSpeed = isSwim ? 1.8 : 2.5;
+      const tilt = (this.vx / 120) * 0.08 + Math.sin(this.phase * 0.8) * 0.08;
       ctx.rotate(tilt);
 
       // Draw shadow/glow under character
@@ -249,9 +257,10 @@
       ctx.fill();
       ctx.restore();
 
-      // Skeletal Deformation (Animated Drawings style harmonic limb articulation)
-      const bob = Math.sin(this.phase * 2) * 4;
-      const squish = 1 + Math.sin(this.phase * 2) * 0.03;
+      // Skeletal Deformation (Animated Drawings style harmonic articulation)
+      const bobFreq = isSwim ? 1.8 : 2.4;
+      const bob = Math.sin(this.phase * bobFreq) * 5;
+      const squish = 1 + Math.sin(this.phase * bobFreq) * 0.035;
 
       ctx.drawImage(
         this.image,
@@ -260,6 +269,56 @@
         this.width,
         this.height * squish
       );
+
+      // Subtle skeletal glow during entrance (first 2.5 seconds) to highlight custom rigging
+      if (this.age < 2.5 && this.skeleton) {
+        const glowAlpha = Math.max(0, (2.5 - this.age) / 2.5) * 0.6;
+        const scaleX = this.width / (this.image.naturalWidth || this.width);
+        const scaleY = this.height / (this.image.naturalHeight || this.height);
+
+        ctx.save();
+        ctx.globalAlpha = this.opacity * glowAlpha;
+        ctx.translate(-this.width / 2, -this.height / 2 + bob);
+
+        const skel = this.skeleton;
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+
+        // Connect spine
+        if (skel.head && skel.pelvis) {
+          ctx.beginPath();
+          ctx.moveTo(skel.head.x * scaleX, skel.head.y * scaleY);
+          ctx.lineTo(skel.pelvis.x * scaleX, skel.pelvis.y * scaleY);
+          ctx.stroke();
+        }
+        // Connect arms
+        if (skel.hand_l && skel.shoulder_l && skel.shoulder_r && skel.hand_r) {
+          ctx.beginPath();
+          ctx.moveTo(skel.hand_l.x * scaleX, skel.hand_l.y * scaleY);
+          ctx.lineTo(skel.shoulder_l.x * scaleX, skel.shoulder_l.y * scaleY);
+          ctx.lineTo(skel.shoulder_r.x * scaleX, skel.shoulder_r.y * scaleY);
+          ctx.lineTo(skel.hand_r.x * scaleX, skel.hand_r.y * scaleY);
+          ctx.stroke();
+        }
+        // Connect legs
+        if (skel.foot_l && skel.pelvis && skel.foot_r) {
+          ctx.beginPath();
+          ctx.moveTo(skel.foot_l.x * scaleX, skel.foot_l.y * scaleY);
+          ctx.lineTo(skel.pelvis.x * scaleX, skel.pelvis.y * scaleY);
+          ctx.lineTo(skel.foot_r.x * scaleX, skel.foot_r.y * scaleY);
+          ctx.stroke();
+        }
+
+        // Joints
+        ctx.fillStyle = '#38bdf8';
+        for (const k in skel) {
+          ctx.beginPath();
+          ctx.arc(skel[k].x * scaleX, skel[k].y * scaleY, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
 
       ctx.restore();
     }
