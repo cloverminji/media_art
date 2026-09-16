@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>관람객 드로잉 단말기 | Live Sketch Kiosk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Pretendard:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="kiosk.css">
+</head>
+<body>
+  <div class="kiosk-app">
+    <!-- Header -->
+    <header class="kiosk-header">
+      <div class="brand">
+        <div class="brand-icon">🎨</div>
+        <div class="brand-text">
+          <h1>AI 라이브 스케치</h1>
+          <p>나만의 캐릭터를 그려 대형 스크린으로 보내보세요</p>
+        </div>
+      </div>
+      <!-- Mode Selection Tabs (PRD P0-1: Hybrid Mode) -->
+      <div class="mode-tabs">
+        <button id="tab-template" class="tab-btn active">
+          <span>🐬</span> 관광지 도안 채색
+        </button>
+        <button id="tab-free" class="tab-btn">
+          <span>✏️</span> 백지 자유 드로잉
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="workspace">
+      <!-- Left Toolbar -->
+      <aside class="tool-palette">
+        <!-- Template Selection (visible in template mode) -->
+        <div id="template-selector" class="panel-section">
+          <label class="section-title">도안 선택</label>
+          <div class="template-grid">
+            <button class="template-card active" data-template="dolphin">
+              <span class="tmpl-icon">🐬</span>
+              <span class="tmpl-name">제주 돌고래</span>
+            </button>
+            <button class="template-card" data-template="tangerine">
+              <span class="tmpl-icon">🍊</span>
+              <span class="tmpl-name">감귤 요정</span>
+            </button>
+            <button class="template-card" data-template="astronaut">
+              <span class="tmpl-icon">🧑‍🚀</span>
+              <span class="tmpl-name">우주 탐험가</span>
+            </button>
+            <button class="template-card" data-template="turtle">
+              <span class="tmpl-icon">🐢</span>
+              <span class="tmpl-name">바다 거북이</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Color Palette -->
+        <div class="panel-section">
+          <label class="section-title">색상 선택</label>
+          <div class="color-swatches">
+            <button class="swatch active" style="background-color: #2563eb;" data-color="#2563eb"></button>
+            <button class="swatch" style="background-color: #06b6d4;" data-color="#06b6d4"></button>
+            <button class="swatch" style="background-color: #10b981;" data-color="#10b981"></button>
+            <button class="swatch" style="background-color: #f59e0b;" data-color="#f59e0b"></button>
+            <button class="swatch" style="background-color: #ef4444;" data-color="#ef4444"></button>
+            <button class="swatch" style="background-color: #ec4899;" data-color="#ec4899"></button>
+            <button class="swatch" style="background-color: #8b5cf6;" data-color="#8b5cf6"></button>
+            <button class="swatch" style="background-color: #1e293b;" data-color="#1e293b"></button>
+            <button class="swatch" style="background-color: #ffffff; border: 1px solid #94a3b8;" data-color="#ffffff"></button>
+            <input type="color" id="custom-color-picker" value="#2563eb" title="사용자 정의 색상">
+          </div>
+        </div>
+
+        <!-- Brush Sizes -->
+        <div class="panel-section">
+          <label class="section-title">브러시 굵기</label>
+          <div class="brush-sizes">
+            <button class="brush-btn" data-size="4"><span style="width: 4px; height: 4px;"></span></button>
+            <button class="brush-btn active" data-size="8"><span style="width: 8px; height: 8px;"></span></button>
+            <button class="brush-btn" data-size="16"><span style="width: 16px; height: 16px;"></span></button>
+            <button class="brush-btn" data-size="28"><span style="width: 24px; height: 24px;"></span></button>
+          </div>
+        </div>
+
+        <!-- Tool Actions -->
+        <div class="panel-section action-tools">
+          <button id="tool-brush" class="tool-action-btn active" title="그리기 브러시">
+            <span>🖌️</span> 브러시
+          </button>
+          <button id="tool-eraser" class="tool-action-btn" title="지우개">
+            <span>🧹</span> 지우개
+          </button>
+          <button id="tool-undo" class="tool-action-btn" title="실행 취소">
+            <span>↩️</span> 되돌리기
+          </button>
+          <button id="tool-clear" class="tool-action-btn danger" title="전체 지우기">
+            <span>🗑️</span> 전체 삭제
+          </button>
+        </div>
+      </aside>
+
+      <!-- Drawing Canvas Area -->
+      <section class="canvas-container">
+        <div class="canvas-card">
+          <canvas id="drawing-canvas" width="800" height="600"></canvas>
+          <canvas id="template-canvas" width="800" height="600"></canvas>
+        </div>
+
+        <!-- Bottom Action Bar -->
+        <div class="bottom-bar">
+          <p class="guide-text">도안을 예쁘게 채색한 후 <strong>[AI 애니메이션 변환]</strong>을 눌러보세요!</p>
+          <button id="btn-convert" class="btn-primary">
+            <span class="btn-icon">⚡</span>
+            <span>AI 애니메이션 변환</span>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- AI Animated Preview & Send Modal (PRD P0-1: <5s conversion, P0-3: 1s send) -->
+    <div id="preview-modal" class="modal-backdrop">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>🎉 AI 스켈레톤 추출 & 애니메이션 완성!</h2>
+          <button id="btn-close-modal" class="modal-close-btn">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="preview-stage">
+            <canvas id="preview-canvas" width="360" height="360"></canvas>
+            <div id="ai-skeleton-overlay" class="skeleton-tag">
+              <span>🦴</span> 관절/뼈대(Rigging) 자동 매핑 완료
+            </div>
+          </div>
+
+          <div class="preview-details">
+            <div class="info-row">
+              <span class="info-label">AI 처리 엔진:</span>
+              <span class="info-val">Meta Animated Drawings Web Pipeline</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">추출 관절 키포인트:</span>
+              <span id="keypoint-count" class="info-val">12 Keypoints (Head, Limbs, Pelvis)</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">모션 타입:</span>
+              <span id="motion-type-label" class="info-val">자율 루프 보행 (Harmonic Walk)</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">데이터 관리:</span>
+              <span class="info-val highlight">메모리 휘발성 (Zero-Persistence)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="btn-re-edit" class="btn-secondary">다시 그리기</button>
+          <button id="btn-send-wall" class="btn-send">
+            <span class="rocket">🚀</span>
+            <span>대형 스크린으로 전송</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Processing Loading Indicator (<5s guaranteed) -->
+    <div id="loading-overlay" class="loading-overlay">
+      <div class="loading-spinner"></div>
+      <div class="loading-title">AI가 그림의 관절과 뼈대를 추출하고 있습니다...</div>
+      <div class="loading-step" id="loading-step">1/3 배경 분리 및 누끼 작업 중...</div>
+    </div>
+  </div>
+
+  <script src="kiosk.js"></script>
+</body>
+</html>

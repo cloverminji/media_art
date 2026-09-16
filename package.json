@@ -1,0 +1,13 @@
+{
+  "name": "mediaart-live-sketch",
+  "version": "1.0.0",
+  "description": "웹 기반 실시간 인터랙티브 라이브 스케치 시스템",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}

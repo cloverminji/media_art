@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>마스터 관리자 대시보드 | Live Sketch Admin Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Pretendard:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="admin-app">
+    <!-- Header -->
+    <header class="admin-header">
+      <div class="brand">
+        <span class="brand-badge">MASTER ADMIN</span>
+        <h1>미디어월 마스터 컨트롤 콘솔</h1>
+      </div>
+      <div class="header-status">
+        <div class="status-indicator online">
+          <span class="dot"></span>
+          <span>WebSocket 미디어 서버 연결됨</span>
+        </div>
+        <a href="/" target="_blank" class="preview-wall-btn">🖥️ 미디어월 열기</a>
+      </div>
+    </header>
+
+    <div class="admin-grid">
+      <!-- Section 1 (PRD P0-2): Preset Theme Management -->
+      <section class="admin-card">
+        <div class="card-header">
+          <h2>🎨 기본 테마 관리 (다중 테마 프리셋)</h2>
+          <span class="card-sub">원클릭으로 대형 스크린의 기본 테마 환경을 즉시 변경합니다.</span>
+        </div>
+
+        <div class="theme-preset-grid">
+          <div class="theme-card active" data-theme="ocean">
+            <div class="theme-thumb thumb-ocean"></div>
+            <div class="theme-info">
+              <h3>🌊 심해 바다 (Ocean)</h3>
+              <p>푸른 물결, 부유하는 기포, 해양 생물 유영 모션</p>
+            </div>
+            <button class="btn-apply-theme">적용 중</button>
+          </div>
+
+          <div class="theme-card" data-theme="space">
+            <div class="theme-thumb thumb-space"></div>
+            <div class="theme-info">
+              <h3>🪐 신비의 우주 (Cosmos)</h3>
+              <p>성운과 은하수, 반짝이는 별빛, 무중력 유영</p>
+            </div>
+            <button class="btn-apply-theme">적용하기</button>
+          </div>
+
+          <div class="theme-card" data-theme="forest">
+            <div class="theme-thumb thumb-forest"></div>
+            <div class="theme-info">
+              <h3>🌲 몽환의 숲 (Forest)</h3>
+              <p>햇살 비치는 숲속, 반딧불이 파티클, 지면 보행</p>
+            </div>
+            <button class="btn-apply-theme">적용하기</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2 (PRD P0-2): Web Image Search & Dynamic Sourcing -->
+      <section class="admin-card">
+        <div class="card-header">
+          <h2>🔍 웹 검색 연동 배경 소싱</h2>
+          <span class="card-sub">웹 검색(이미지 API)을 통해 고화질 배경 이미지를 실시간 소싱하여 미디어월에 송출합니다.</span>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="search-box">
+          <input type="text" id="input-search-query" placeholder="배경 검색어 입력 (예: 제주 바다, 오로라, 숲, 산호초 등)..." value="바다">
+          <button id="btn-search-images" class="btn-search">
+            <span>🔎</span> 검색
+          </button>
+        </div>
+
+        <!-- Image Gallery Results -->
+        <div class="search-results-container">
+          <div class="results-header">
+            <span>검색 결과 (클릭하여 미디어월 배경으로 즉시 적용)</span>
+            <span id="search-result-count" class="badge">4개 발견</span>
+          </div>
+          <div id="search-results-grid" class="image-gallery-grid">
+            <!-- Dynamically populated via JS -->
+          </div>
+        </div>
+
+        <!-- Custom URL Input -->
+        <div class="custom-url-section">
+          <label>이미지 URL 직접 입력 적용:</label>
+          <div class="url-input-group">
+            <input type="url" id="input-custom-url" placeholder="https://example.com/high-res-background.jpg">
+            <button id="btn-apply-custom-url" class="btn-apply-url">적용</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 3 (PRD P0-3): Screen Optimization & Character Lifecycle -->
+      <section class="admin-card">
+        <div class="card-header">
+          <h2>⏱️ 화면 최적화 및 캐릭터 생명 주기 관리</h2>
+          <span class="card-sub">화면 내 체류 시간 타이머 설정 및 실시간 모니터링/메모리 관리를 수행합니다.</span>
+        </div>
+
+        <div class="lifecycle-controls">
+          <div class="control-row">
+            <label class="control-label">캐릭터 체류 수명 (Lifetime):</label>
+            <div class="lifetime-display">
+              <span id="val-lifetime">180</span>초 <span class="sub-min" id="val-lifetime-min">(3분)</span>
+            </div>
+          </div>
+
+          <input type="range" id="range-lifetime" min="10" max="300" step="10" value="180">
+
+          <div class="preset-buttons">
+            <button class="preset-btn" data-time="15">⚡ 15초 (빠른 테스트)</button>
+            <button class="preset-btn" data-time="30">⚡ 30초 (테스트)</button>
+            <button class="preset-btn active" data-time="180">🎯 3분 (PRD 기본 권장)</button>
+            <button class="preset-btn" data-time="300">🎯 5분 (PRD 최대)</button>
+          </div>
+        </div>
+
+        <!-- Live Monitoring Dashboard -->
+        <div class="metrics-grid">
+          <div class="metric-box">
+            <span class="metric-num" id="metric-active-count">0</span>
+            <span class="metric-label">현재 활성 캐릭터 수</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-num" id="metric-fps">60</span>
+            <span class="metric-label">미디어월 렌더링 FPS</span>
+          </div>
+          <div class="metric-box">
+            <span class="metric-num highlight" id="metric-persistence">0 Byte</span>
+            <span class="metric-label">서버 영구 저장 드로잉 데이터 (무저장)</span>
+          </div>
+        </div>
+
+        <!-- Danger/Action Zone -->
+        <div class="emergency-zone">
+          <button id="btn-clear-all" class="btn-danger">
+            <span>🧹</span> 모든 캐릭터 즉시 페이드아웃 퇴장
+          </button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

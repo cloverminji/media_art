@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>실시간 인터랙티브 미디어월 | Live Sketch Media Wall</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Pretendard:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="mediawall.css">
+</head>
+<body class="theme-ocean">
+  <!-- Dynamic Background Container -->
+  <div id="bg-layer" class="bg-layer">
+    <div id="bg-overlay" class="bg-overlay"></div>
+    <div id="ambient-particles" class="ambient-particles"></div>
+  </div>
+
+  <!-- Main Animation Canvas -->
+  <canvas id="mediawall-canvas"></canvas>
+
+  <!-- Media Wall Status Overlay -->
+  <div id="hud-panel" class="hud-panel">
+    <div class="hud-brand">
+      <span class="hud-live-dot"></span>
+      <span class="hud-title">LIVE SKETCH MEDIA WALL</span>
+    </div>
+    <div class="hud-info">
+      <div class="hud-chip"><span class="chip-label">테마</span> <span id="hud-theme" class="chip-val">바다 (Ocean)</span></div>
+      <div class="hud-chip"><span class="chip-label">활성 캐릭터</span> <span id="hud-count" class="chip-val">0</span></div>
+      <div class="hud-chip"><span class="chip-label">FPS</span> <span id="hud-fps" class="chip-val">60</span></div>
+    </div>
+    <div class="hud-links">
+      <a href="/kiosk" target="_blank" class="hud-btn">🎨 드로잉 키오스크 열기</a>
+      <a href="/admin" target="_blank" class="hud-btn admin-btn">⚙️ 관리자 콘솔</a>
+    </div>
+  </div>
+
+  <!-- Spawn Notification Toast -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="mediawall.js"></script>
+</body>
+</html>
