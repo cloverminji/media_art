@@ -115,11 +115,30 @@
               <div class="dropzone-content" id="template-dropzone-prompt">
                 <span class="dropzone-icon">🖼️</span>
                 <span class="dropzone-text">도안 이미지 파일 선택 (PNG / JPG / SVG)</span>
-                <span class="dropzone-sub">클릭하거나 파일을 드래그하여 올려주세요</span>
+                <span class="dropzone-sub">클릭하거나 파일을 드래그하여 올려주세요 (흰색 배경 자동 투명화 & 최적화 지원)</span>
               </div>
               <div class="dropzone-preview" id="template-dropzone-preview" style="display: none;">
-                <img id="img-template-preview" src="" alt="도안 미리보기">
-                <button type="button" class="btn-change-file" id="btn-change-template-file">변경</button>
+                <div class="preview-thumb-box checkerboard-bg">
+                  <img id="img-template-preview" src="" alt="도안 미리보기">
+                </div>
+                <div class="preview-meta">
+                  <div class="preview-status-row">
+                    <span class="badge-tag success" id="badge-opt-status">⚡ 투명 라인아트 변환 완료</span>
+                    <span class="opt-size-info" id="opt-size-info">용량 최적화 완료</span>
+                  </div>
+                  <!-- Line Art & Transparency Controls -->
+                  <div class="template-opt-controls">
+                    <label class="opt-checkbox-label">
+                      <input type="checkbox" id="chk-remove-bg" checked>
+                      <span>흰색 배경 자동 투명화 (색칠용 라인아트 추출)</span>
+                    </label>
+                    <div class="opt-slider-row" id="slider-threshold-row">
+                      <label for="range-threshold">외곽선 추출 감도: <span id="val-threshold">225</span></label>
+                      <input type="range" id="range-threshold" min="160" max="250" value="225" step="1">
+                    </div>
+                  </div>
+                  <button type="button" class="btn-change-file" id="btn-change-template-file">🔄 다른 파일 선택</button>
+                </div>
               </div>
             </div>
 

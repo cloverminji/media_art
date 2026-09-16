@@ -143,10 +143,41 @@
       // Image element loaded in memory (zero persistence)
       this.image = new Image();
       this.imageLoaded = false;
+      this.drawable = null;
       this.image.onload = () => {
+        const nw = this.image.naturalWidth;
+        const nh = this.image.naturalHeight;
+
+        try {
+          const testCanvas = document.createElement('canvas');
+          testCanvas.width = nw;
+          testCanvas.height = nh;
+          const tCtx = testCanvas.getContext('2d', { willReadFrequently: true });
+          tCtx.drawImage(this.image, 0, 0);
+          const imgData = tCtx.getImageData(0, 0, nw, nh);
+          const d = imgData.data;
+          // Check corner pixels
+          const corners = [0, (nw - 1) * 4, ((nh - 1) * nw) * 4, ((nh * nw) - 1) * 4];
+          const isWhiteBg = corners.every(idx => d[idx] > 230 && d[idx + 1] > 230 && d[idx + 2] > 230 && d[idx + 3] > 200);
+
+          if (isWhiteBg) {
+            for (let i = 0; i < d.length; i += 4) {
+              if (d[i] > 225 && d[i + 1] > 225 && d[i + 2] > 225) {
+                d[i + 3] = 0;
+              }
+            }
+            tCtx.putImageData(imgData, 0, 0);
+            this.drawable = testCanvas;
+          } else {
+            this.drawable = this.image;
+          }
+        } catch (e) {
+          this.drawable = this.image;
+        }
+
         this.imageLoaded = true;
         this.width = 160 * (data.scale || 1.0);
-        this.height = (this.image.naturalHeight / this.image.naturalWidth) * this.width;
+        this.height = (nh / nw) * this.width;
       };
       this.image.src = data.dataUrl;
 
@@ -263,7 +294,7 @@
       const squish = 1 + Math.sin(this.phase * bobFreq) * 0.035;
 
       ctx.drawImage(
-        this.image,
+        this.drawable || this.image,
         -this.width / 2,
         -this.height / 2 + bob,
         this.width,

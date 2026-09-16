@@ -366,10 +366,67 @@
     }
   }
 
+  const cleanTemplateCache = new WeakMap();
+
+  function getCleanTransparentCanvas(img) {
+    if (cleanTemplateCache.has(img)) {
+      return cleanTemplateCache.get(img);
+    }
+
+    const nw = img.naturalWidth || img.width || 800;
+    const nh = img.naturalHeight || img.height || 600;
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = nw;
+    offCanvas.height = nh;
+    const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+    offCtx.drawImage(img, 0, 0);
+
+    try {
+      const imgData = offCtx.getImageData(0, 0, nw, nh);
+      const data = imgData.data;
+      let hasOpaqueWhite = false;
+
+      // Sample corners & grid to check for solid white background
+      for (let i = 0; i < data.length; i += 16) {
+        if (data[i + 3] > 200 && data[i] > 230 && data[i + 1] > 230 && data[i + 2] > 230) {
+          hasOpaqueWhite = true;
+          break;
+        }
+      }
+
+      if (hasOpaqueWhite) {
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const a = data[i + 3];
+          if (a < 10) continue;
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          if (lum >= 225) {
+            data[i + 3] = 0;
+          } else {
+            const alphaRatio = 1 - (lum / 225);
+            data[i] = 30;
+            data[i + 1] = 41;
+            data[i + 2] = 59;
+            data[i + 3] = Math.round(Math.min(255, Math.pow(alphaRatio, 0.85) * 255));
+          }
+        }
+        offCtx.putImageData(imgData, 0, 0);
+      }
+    } catch (e) {
+      console.warn('Canvas pixel processing skipped:', e);
+    }
+
+    cleanTemplateCache.set(img, offCanvas);
+    return offCanvas;
+  }
+
   function renderCustomTemplate(tmpl) {
     let img = customTemplateImages[tmpl.id];
     if (!img) {
       img = new Image();
+      img.crossOrigin = 'anonymous';
       img.src = tmpl.imageUrl;
       customTemplateImages[tmpl.id] = img;
       img.onload = () => {
@@ -384,17 +441,20 @@
 
   function drawCustomTemplateOnCanvas(img) {
     tmplCtx.clearRect(0, 0, templateCanvas.width, templateCanvas.height);
+    const sourceDrawable = getCleanTransparentCanvas(img);
     const w = templateCanvas.width;
     const h = templateCanvas.height;
     const pad = 60;
-    const scale = Math.min((w - pad * 2) / (img.naturalWidth || 1), (h - pad * 2) / (img.naturalHeight || 1));
-    const dw = (img.naturalWidth || 1) * scale;
-    const dh = (img.naturalHeight || 1) * scale;
+    const srcW = sourceDrawable.width || 1;
+    const srcH = sourceDrawable.height || 1;
+    const scale = Math.min((w - pad * 2) / srcW, (h - pad * 2) / srcH);
+    const dw = srcW * scale;
+    const dh = srcH * scale;
     const dx = (w - dw) / 2;
     const dy = (h - dh) / 2;
 
     tmplCtx.save();
-    tmplCtx.drawImage(img, dx, dy, dw, dh);
+    tmplCtx.drawImage(sourceDrawable, dx, dy, dw, dh);
     tmplCtx.restore();
   }
 
@@ -436,10 +496,21 @@
       const data = await res.json();
       if (data.success && data.templates) {
         updateTemplates(data.templates);
+        return;
       }
     } catch (e) {
-      console.error('Failed to fetch templates:', e);
+      console.warn('Failed to fetch templates from server, checking local backup:', e);
     }
+    // Fallback: check localStorage
+    try {
+      const local = JSON.parse(localStorage.getItem('kiosk_custom_templates') || '[]');
+      if (local && local.length > 0) {
+        const defaultList = loadedTemplates.filter(t => t.isBuiltin);
+        const map = new Map();
+        [...defaultList, ...local].forEach(t => map.set(t.id, t));
+        updateTemplates(Array.from(map.values()));
+      }
+    } catch (e) {}
   }
 
   // ----------------------------------------------------

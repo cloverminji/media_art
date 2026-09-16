@@ -254,6 +254,13 @@
   const imgTemplatePreview = document.getElementById('img-template-preview');
   const btnChangeTemplateFile = document.getElementById('btn-change-template-file');
 
+  const badgeOptStatus = document.getElementById('badge-opt-status');
+  const optSizeInfo = document.getElementById('opt-size-info');
+  const chkRemoveBg = document.getElementById('chk-remove-bg');
+  const rangeThreshold = document.getElementById('range-threshold');
+  const valThreshold = document.getElementById('val-threshold');
+  const sliderThresholdRow = document.getElementById('slider-threshold-row');
+
   const inputTemplateName = document.getElementById('input-template-name');
   const inputTemplateIcon = document.getElementById('input-template-icon');
   const selectTemplateMotion = document.getElementById('select-template-motion');
@@ -263,6 +270,8 @@
   const adminTemplatesGrid = document.getElementById('admin-templates-grid');
 
   let uploadedTemplateDataUrl = '';
+  let originalTemplateImg = null;
+  let originalFileSize = 0;
   let allAdminTemplates = [];
 
   // Dropzone events for template upload
@@ -296,24 +305,137 @@
     inputTemplateFile.click();
   });
 
+  // Client-side Smart Line Art Processor (Transparency & Downscaling)
+  function processTemplateImage(img, options = {}) {
+    const removeWhiteBg = options.removeWhiteBg !== false;
+    const threshold = options.threshold !== undefined ? options.threshold : 225;
+    const maxDim = options.maxWidth || 1024;
+
+    const naturalW = img.naturalWidth || img.width || 800;
+    const naturalH = img.naturalHeight || img.height || 600;
+
+    let scale = 1;
+    if (naturalW > maxDim || naturalH > maxDim) {
+      scale = Math.min(maxDim / naturalW, maxDim / naturalH);
+    }
+
+    const w = Math.max(1, Math.round(naturalW * scale));
+    const h = Math.max(1, Math.round(naturalH * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    ctx.drawImage(img, 0, 0, w, h);
+
+    if (removeWhiteBg) {
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+
+        if (a < 10) continue; // Already transparent
+
+        // Perceived luminance
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+        if (lum >= threshold) {
+          // White or light background -> 100% transparent
+          data[i + 3] = 0;
+        } else {
+          // Line art ink pixel: smooth antialiasing and high contrast dark ink
+          const alphaRatio = 1 - (lum / threshold);
+          data[i] = 30;
+          data[i + 1] = 41;
+          data[i + 2] = 59;
+          data[i + 3] = Math.round(Math.min(255, Math.pow(alphaRatio, 0.85) * 255));
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    return canvas.toDataURL('image/png');
+  }
+
+  function updateProcessedPreview() {
+    if (!originalTemplateImg) return;
+
+    const removeBg = chkRemoveBg ? chkRemoveBg.checked : true;
+    const threshold = rangeThreshold ? parseInt(rangeThreshold.value, 10) : 225;
+
+    if (sliderThresholdRow) {
+      sliderThresholdRow.style.display = removeBg ? 'flex' : 'none';
+    }
+
+    uploadedTemplateDataUrl = processTemplateImage(originalTemplateImg, {
+      removeWhiteBg: removeBg,
+      threshold: threshold,
+      maxWidth: 1024,
+      maxHeight: 1024
+    });
+
+    imgTemplatePreview.src = uploadedTemplateDataUrl;
+
+    // Approximate size in KB
+    const optimizedBytes = Math.round((uploadedTemplateDataUrl.length * 3) / 4);
+    const origKB = originalFileSize > 0 ? (originalFileSize / 1024).toFixed(0) + 'KB' : '';
+    const optKB = (optimizedBytes / 1024).toFixed(0) + 'KB';
+
+    if (badgeOptStatus) {
+      badgeOptStatus.textContent = removeBg ? '⚡ 투명 도안 최적화 완료' : '⚡ 원본 비율 최적화 완료';
+    }
+    if (optSizeInfo) {
+      if (originalFileSize > 0) {
+        const savedPercent = Math.max(0, Math.round((1 - optimizedBytes / originalFileSize) * 100));
+        optSizeInfo.textContent = `용량: ${origKB} ➔ ${optKB} (${savedPercent}% 압축)`;
+      } else {
+        optSizeInfo.textContent = `용량: ${optKB}`;
+      }
+    }
+  }
+
+  if (chkRemoveBg) {
+    chkRemoveBg.addEventListener('change', updateProcessedPreview);
+  }
+
+  if (rangeThreshold && valThreshold) {
+    rangeThreshold.addEventListener('input', (e) => {
+      valThreshold.textContent = e.target.value;
+      updateProcessedPreview();
+    });
+  }
+
   function handleTemplateFile(file) {
     if (!file.type.startsWith('image/')) {
       alert('이미지 파일(PNG, JPG, SVG)만 업로드 가능합니다.');
       return;
     }
 
+    originalFileSize = file.size;
+
     const reader = new FileReader();
     reader.onload = (event) => {
-      uploadedTemplateDataUrl = event.target.result;
-      imgTemplatePreview.src = uploadedTemplateDataUrl;
-      templateDropzonePrompt.style.display = 'none';
-      templateDropzonePreview.style.display = 'flex';
+      const rawDataUrl = event.target.result;
+      const img = new Image();
+      img.onload = () => {
+        originalTemplateImg = img;
+        updateProcessedPreview();
 
-      // Auto fill name if empty
-      if (!inputTemplateName.value.trim()) {
-        const baseName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
-        inputTemplateName.value = baseName;
-      }
+        templateDropzonePrompt.style.display = 'none';
+        templateDropzonePreview.style.display = 'flex';
+
+        // Auto fill name if empty
+        if (!inputTemplateName.value.trim()) {
+          const baseName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+          inputTemplateName.value = baseName;
+        }
+      };
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
   }
@@ -349,11 +471,29 @@
         })
       });
 
-      const data = await res.json();
-      if (data.success) {
+      let data;
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        throw new Error(res.status === 413 ? '이미지 파일 용량이 서버 한도를 초과했습니다.' : `서버 응답 오류 (HTTP ${res.status})`);
+      }
+
+      if (res.ok && data.success) {
         alert(`🎉 '${name}' 도안이 성공적으로 등록되었습니다!\n키오스크 단말기에 실시간 반영되었습니다.`);
+        // Persist to local backup for serverless persistence
+        try {
+          if (data.template) {
+            const cached = JSON.parse(localStorage.getItem('kiosk_custom_templates') || '[]');
+            const filtered = cached.filter(t => t.id !== data.template.id);
+            filtered.push(data.template);
+            localStorage.setItem('kiosk_custom_templates', JSON.stringify(filtered));
+          }
+        } catch (storageErr) {}
+
         // Reset form
         uploadedTemplateDataUrl = '';
+        originalTemplateImg = null;
+        originalFileSize = 0;
         imgTemplatePreview.src = '';
         templateDropzonePrompt.style.display = 'flex';
         templateDropzonePreview.style.display = 'none';
@@ -365,7 +505,7 @@
       }
     } catch (e) {
       console.error('Template upload error:', e);
-      alert('도안 등록 중 통신 오류가 발생했습니다.');
+      alert('도안 등록 오류: ' + (e.message || '서버 통신 중 문제가 발생했습니다.'));
     } finally {
       btnSubmitTemplate.disabled = false;
       btnSubmitTemplate.innerHTML = '<span>➕</span> 키오스크 도안으로 등록 및 실시간 전파';
@@ -378,10 +518,24 @@
       const data = await res.json();
       if (data.success && data.templates) {
         renderAdminTemplates(data.templates);
+        return;
       }
     } catch (err) {
-      console.error('Failed to fetch templates:', err);
+      console.warn('Failed to fetch templates from server, checking local fallback:', err);
     }
+    // Fallback: check localStorage
+    try {
+      const local = JSON.parse(localStorage.getItem('kiosk_custom_templates') || '[]');
+      if (local && local.length > 0) {
+        const defaultList = [
+          { id: 'dolphin', name: '제주 돌고래', icon: '🐬', motionType: 'swim', isBuiltin: true },
+          { id: 'tangerine', name: '감귤 요정', icon: '🍊', motionType: 'walk', isBuiltin: true },
+          { id: 'astronaut', name: '우주 탐험가', icon: '🧑‍🚀', motionType: 'walk', isBuiltin: true },
+          { id: 'turtle', name: '바다 거북이', icon: '🐢', motionType: 'swim', isBuiltin: true }
+        ];
+        renderAdminTemplates([...defaultList, ...local]);
+      }
+    } catch (e) {}
   }
 
   function renderAdminTemplates(templates) {
@@ -568,17 +722,41 @@
         const w = img.naturalWidth;
         const h = img.naturalHeight;
 
+        // Check if image has solid white background and sanitize if needed
+        let finalDataUrl = imageDataUrl;
+        let finalImg = img;
+
+        try {
+          const testCanvas = document.createElement('canvas');
+          testCanvas.width = Math.min(w, 400);
+          testCanvas.height = Math.min(h, 400);
+          const tCtx = testCanvas.getContext('2d', { willReadFrequently: true });
+          tCtx.drawImage(img, 0, 0, testCanvas.width, testCanvas.height);
+          const tData = tCtx.getImageData(0, 0, testCanvas.width, testCanvas.height).data;
+          // Sample corner pixels
+          const corners = [0, (testCanvas.width - 1) * 4, ((testCanvas.height - 1) * testCanvas.width) * 4, (testCanvas.height * testCanvas.width - 1) * 4];
+          const isWhiteBg = corners.every(idx => tData[idx] > 230 && tData[idx + 1] > 230 && tData[idx + 2] > 230 && tData[idx + 3] > 200);
+
+          if (isWhiteBg) {
+            finalDataUrl = processTemplateImage(img, { removeWhiteBg: true, threshold: 225 });
+            finalImg = new Image();
+            finalImg.src = finalDataUrl;
+          }
+        } catch (e) {
+          console.warn('Corner check skipped:', e);
+        }
+
         // Scale/adjust skeleton if given in absolute or normalized format
         const finalSkeleton = normalizeSkeletonToImage(parsedSkeleton, w, h);
 
         importedChar = {
-          dataUrl: imageDataUrl,
+          dataUrl: finalDataUrl,
           skeleton: finalSkeleton,
           motionType: adMotionSelect.value || 'walk',
           name: imageFile ? imageFile.name.replace(/\.[^/.]+$/, '') : 'Animated Character',
           width: w,
           height: h,
-          charImg: img
+          charImg: finalImg
         };
 
         // Update UI details

@@ -316,6 +316,7 @@ html, body {
 
 #template-canvas {
   pointer-events: none;
+  mix-blend-mode: multiply;
 }
 
 /* Bottom Bar */

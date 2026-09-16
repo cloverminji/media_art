@@ -8,14 +8,36 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const PORT = process.env.PORT || 3000;
-const DATA_DIR = path.join(__dirname, 'data');
-const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const os = require('os');
 
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+const PORT = process.env.PORT || 3000;
+
+// Determine writable data directory (Handle Vercel / AWS Lambda read-only environment)
+let DATA_DIR = path.join(__dirname, 'data');
+let isFilesystemWritable = true;
+
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  const testPath = path.join(DATA_DIR, '.write_test');
+  fs.writeFileSync(testPath, 'ok');
+  fs.unlinkSync(testPath);
+} catch (e) {
+  // __dirname is read-only (e.g. Vercel Serverless /var/task) -> use os.tmpdir()
+  DATA_DIR = path.join(os.tmpdir(), 'mediaart_data');
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.warn('Could not create temp data dir, using in-memory mode:', err);
+    isFilesystemWritable = false;
+  }
 }
+
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const TEMPLATES_FILE = path.join(DATA_DIR, 'templates.json');
 
 // Default Admin Config (Persistent)
 const DEFAULT_CONFIG = {
@@ -26,26 +48,29 @@ const DEFAULT_CONFIG = {
 };
 
 let currentConfig = { ...DEFAULT_CONFIG };
-if (fs.existsSync(CONFIG_FILE)) {
-  try {
-    const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-    currentConfig = { ...DEFAULT_CONFIG, ...saved };
-  } catch (err) {
-    console.error('Failed to parse config.json, using defaults:', err);
+try {
+  const bundledConfig = path.join(__dirname, 'data', 'config.json');
+  if (fs.existsSync(bundledConfig)) {
+    currentConfig = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(bundledConfig, 'utf-8')) };
+  } else if (fs.existsSync(CONFIG_FILE)) {
+    currentConfig = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')) };
   }
-} else {
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(currentConfig, null, 2), 'utf-8');
+} catch (err) {
+  console.warn('Config load fallback to defaults:', err.message);
 }
 
 function saveConfig(newConfig) {
   currentConfig = { ...currentConfig, ...newConfig };
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(currentConfig, null, 2), 'utf-8');
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(currentConfig, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Could not write config to disk (in-memory mode active):', err.message);
+  }
 }
 
 // ----------------------------------------------------
 // Custom Coloring Templates Storage (PRD P0-1 & Admin Ext)
 // ----------------------------------------------------
-const TEMPLATES_FILE = path.join(DATA_DIR, 'templates.json');
 const DEFAULT_TEMPLATES = [
   { id: 'dolphin', name: '제주 돌고래', icon: '🐬', motionType: 'swim', isBuiltin: true },
   { id: 'tangerine', name: '감귤 요정', icon: '🍊', motionType: 'walk', isBuiltin: true },
@@ -54,15 +79,16 @@ const DEFAULT_TEMPLATES = [
 ];
 
 let customTemplates = [];
-if (fs.existsSync(TEMPLATES_FILE)) {
-  try {
+try {
+  const bundledTemplates = path.join(__dirname, 'data', 'templates.json');
+  if (fs.existsSync(bundledTemplates)) {
+    customTemplates = JSON.parse(fs.readFileSync(bundledTemplates, 'utf-8'));
+  } else if (fs.existsSync(TEMPLATES_FILE)) {
     customTemplates = JSON.parse(fs.readFileSync(TEMPLATES_FILE, 'utf-8'));
-  } catch (err) {
-    console.error('Failed to parse templates.json, resetting to empty:', err);
-    customTemplates = [];
   }
-} else {
-  fs.writeFileSync(TEMPLATES_FILE, JSON.stringify([], null, 2), 'utf-8');
+} catch (err) {
+  console.warn('Templates load fallback to empty custom array:', err.message);
+  customTemplates = [];
 }
 
 function getCombinedTemplates() {
@@ -70,7 +96,11 @@ function getCombinedTemplates() {
 }
 
 function saveCustomTemplates() {
-  fs.writeFileSync(TEMPLATES_FILE, JSON.stringify(customTemplates, null, 2), 'utf-8');
+  try {
+    fs.writeFileSync(TEMPLATES_FILE, JSON.stringify(customTemplates, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Could not write templates to disk (in-memory mode active):', err.message);
+  }
 }
 
 app.use(express.json({ limit: '20mb' }));
@@ -314,9 +344,32 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`[MediaArt Server] Live Sketch System running at http://localhost:${PORT}`);
-  console.log(`- Media Wall Display: http://localhost:${PORT}/`);
-  console.log(`- Visitor Drawing Kiosk: http://localhost:${PORT}/kiosk`);
-  console.log(`- Master Admin Dashboard: http://localhost:${PORT}/admin`);
+// Express Error Handling Middleware for JSON payloads & Entity Too Large
+app.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+    return res.status(413).json({
+      success: false,
+      error: '이미지 용량이 너무 큽니다. (최대 20MB)'
+    });
+  }
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({
+      success: false,
+      error: '올바르지 않은 JSON 요청 데이터입니다.'
+    });
+  }
+  console.error('Unhandled server error:', err);
+  res.status(500).json({ success: false, error: '서버 내부 오류가 발생했습니다.' });
 });
+
+if (!process.env.VERCEL) {
+  server.listen(PORT, () => {
+    console.log(`[MediaArt Server] Live Sketch System running at http://localhost:${PORT}`);
+    console.log(`- Media Wall Display: http://localhost:${PORT}/`);
+    console.log(`- Visitor Drawing Kiosk: http://localhost:${PORT}/kiosk`);
+    console.log(`- Master Admin Dashboard: http://localhost:${PORT}/admin`);
+  });
+}
+
+module.exports = app;
+
