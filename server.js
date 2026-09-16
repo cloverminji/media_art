@@ -197,6 +197,71 @@ app.delete('/api/templates/:id', (req, res) => {
   res.json({ success: true, templates: allTemplates });
 });
 
+// ----------------------------------------------------
+// Character Spawning & Real-Time Sync API (Vercel Serverless + REST Fallback)
+// ----------------------------------------------------
+let spawnedCharactersQueue = [];
+
+function pruneSpawnQueue() {
+  const now = Date.now();
+  spawnedCharactersQueue = spawnedCharactersQueue.filter(item => (now - item.timestamp) < 90000);
+}
+
+app.post('/api/spawn', (req, res) => {
+  const characterData = req.body;
+  if (!characterData || !characterData.dataUrl) {
+    return res.status(400).json({ success: false, error: 'Character data with dataUrl is required' });
+  }
+
+  const charItem = {
+    id: characterData.id || ('char_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)),
+    dataUrl: characterData.dataUrl,
+    skeleton: characterData.skeleton || null,
+    templateId: characterData.templateId || 'custom',
+    motionType: characterData.motionType || 'walk',
+    scale: characterData.scale || 1.0,
+    lifetimeSeconds: characterData.lifetimeSeconds || currentConfig.lifetimeSeconds || 180,
+    timestamp: Date.now()
+  };
+
+  pruneSpawnQueue();
+  spawnedCharactersQueue.push(charItem);
+
+  // Broadcast to connected WebSocket clients (Local/VPS)
+  broadcast({
+    type: 'SPAWN_CHARACTER',
+    character: charItem
+  });
+
+  res.json({ success: true, id: charItem.id });
+});
+
+app.get('/api/characters/poll', (req, res) => {
+  const since = parseInt(req.query.since, 10) || 0;
+  pruneSpawnQueue();
+  const newCharacters = spawnedCharactersQueue.filter(item => item.timestamp > since);
+  res.json({
+    success: true,
+    characters: newCharacters,
+    config: currentConfig,
+    serverTime: Date.now()
+  });
+});
+
+app.post('/api/action', (req, res) => {
+  const { action, payload } = req.body || {};
+  if (action === 'CLEAR_ALL_CHARACTERS') {
+    broadcast({ type: 'CLEAR_ALL_CHARACTERS' });
+  } else if (action === 'SET_THEME' && payload && payload.theme) {
+    saveConfig({ theme: payload.theme });
+    broadcast({ type: 'THEME_CHANGED', theme: payload.theme });
+  } else if (action === 'UPDATE_LIFECYCLE' && payload && payload.lifetimeSeconds) {
+    saveConfig({ lifetimeSeconds: Number(payload.lifetimeSeconds) });
+    broadcast({ type: 'LIFECYCLE_UPDATED', config: currentConfig });
+  }
+  res.json({ success: true, config: currentConfig });
+});
+
 // Curated high-resolution web backgrounds & live image search API
 const CURATED_BACKGROUNDS = {
   ocean: [

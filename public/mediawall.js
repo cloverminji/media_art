@@ -405,83 +405,160 @@
   }
 
   // ----------------------------------------------------
-  // WebSocket Connection (Real-Time Zero-Persistence Relay)
+  // Multi-Channel Real-Time Sync Engine (Vercel Serverless + Local WebSocket)
   // ----------------------------------------------------
+  const spawnedCharIds = new Set();
+
+  function handleIncomingAction(data) {
+    if (!data) return;
+
+    switch (data.type) {
+      case 'INIT_STATE':
+        if (data.config) {
+          defaultLifetime = data.config.lifetimeSeconds || 180;
+          applyTheme(data.config);
+        }
+        break;
+
+      case 'SPAWN_CHARACTER':
+        // PRD P0-1: Immediate spawn on Media Wall (< 1 second)
+        const charData = data.character || data;
+        if (charData && charData.dataUrl) {
+          const cid = charData.id || ('char_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+          if (spawnedCharIds.has(cid)) return; // Prevent duplicate spawn across multiple channels
+          spawnedCharIds.add(cid);
+
+          const char = new LiveCharacter({
+            ...charData,
+            id: cid,
+            lifetimeSeconds: charData.lifetimeSeconds || defaultLifetime
+          });
+          characters.push(char);
+          showToast('새로운 드로잉 캐릭터가 미디어월에 등장했습니다!');
+        }
+        break;
+
+      case 'THEME_CHANGED':
+      case 'CONFIG_UPDATED':
+        // PRD P0-2: Real-time theme change without reload
+        if (data.config) {
+          applyTheme(data.config);
+          showToast(`테마가 '${THEME_NAMES[data.config.theme] || data.config.theme}'(으)로 변경되었습니다.`);
+        } else if (data.theme) {
+          applyTheme({ theme: data.theme });
+          showToast(`테마가 '${THEME_NAMES[data.theme] || data.theme}'(으)로 변경되었습니다.`);
+        }
+        break;
+
+      case 'LIFECYCLE_UPDATED':
+        const newLifetime = (data.config && data.config.lifetimeSeconds) || data.lifetimeSeconds;
+        if (newLifetime) {
+          defaultLifetime = newLifetime;
+          characters.forEach(c => {
+            c.lifetimeSeconds = defaultLifetime;
+          });
+          showToast(`캐릭터 수명이 ${defaultLifetime}초로 업데이트되었습니다.`);
+        }
+        break;
+
+      case 'CLEAR_ALL_CHARACTERS':
+        // Fast fade out for all active characters
+        characters.forEach(c => {
+          c.age = Math.max(c.age, c.lifetimeSeconds - 3); // trigger fade-out in 3s
+        });
+        showToast('모든 캐릭터 퇴장 프로세스를 시작합니다.');
+        break;
+    }
+  }
+
+  // 1. BroadcastChannel (Instant 0ms peer-to-peer across tabs on the same machine/browser)
+  let syncChannel = null;
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      syncChannel = new BroadcastChannel('mediaart_live_sync');
+      syncChannel.onmessage = (event) => {
+        handleIncomingAction(event.data);
+      };
+    } catch (e) {
+      console.warn('BroadcastChannel not available:', e);
+    }
+  }
+
+  // 2. WebSocket Connection (Local / Dedicated server with persistent WS)
   function initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}`;
-    ws = new WebSocket(wsUrl);
+    try {
+      ws = new WebSocket(wsUrl);
 
-    ws.onopen = () => {
-      console.log('[MediaWall] WebSocket connected');
-      ws.send(JSON.stringify({
-        type: 'REGISTER_CLIENT',
-        role: 'mediawall'
-      }));
-    };
+      ws.onopen = () => {
+        console.log('[MediaWall] WebSocket connected');
+        ws.send(JSON.stringify({
+          type: 'REGISTER_CLIENT',
+          role: 'mediawall'
+        }));
+      };
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        switch (data.type) {
-          case 'INIT_STATE':
-            if (data.config) {
-              defaultLifetime = data.config.lifetimeSeconds || 180;
-              applyTheme(data.config);
-            }
-            break;
-
-          case 'SPAWN_CHARACTER':
-            // PRD P0-1: Immediate spawn on Media Wall (< 1 second)
-            if (data.character) {
-              const char = new LiveCharacter(data.character);
-              characters.push(char);
-              showToast('새로운 드로잉 캐릭터가 미디어월에 등장했습니다!');
-            }
-            break;
-
-          case 'THEME_CHANGED':
-          case 'CONFIG_UPDATED':
-            // PRD P0-2: Real-time theme change without reload
-            if (data.config) {
-              applyTheme(data.config);
-              showToast(`테마가 '${THEME_NAMES[data.config.theme] || data.config.theme}'(으)로 변경되었습니다.`);
-            }
-            break;
-
-          case 'LIFECYCLE_UPDATED':
-            if (data.config && data.config.lifetimeSeconds) {
-              defaultLifetime = data.config.lifetimeSeconds;
-              characters.forEach(c => {
-                c.lifetimeSeconds = defaultLifetime;
-              });
-              showToast(`캐릭터 수명이 ${defaultLifetime}초로 업데이트되었습니다.`);
-            }
-            break;
-
-          case 'CLEAR_ALL_CHARACTERS':
-            // Fast fade out for all active characters
-            characters.forEach(c => {
-              c.age = Math.max(c.age, c.lifetimeSeconds - 3); // trigger fade-out in 3s
-            });
-            showToast('모든 캐릭터 퇴장 프로세스를 시작합니다.');
-            break;
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleIncomingAction(data);
+        } catch (e) {
+          console.error('[MediaWall] Error parsing WS message:', e);
         }
-      } catch (e) {
-        console.error('[MediaWall] Error parsing WS message:', e);
-      }
-    };
+      };
 
-    ws.onclose = () => {
-      console.warn('[MediaWall] WebSocket disconnected, reconnecting in 2s...');
-      setTimeout(initWebSocket, 2000);
-    };
+      ws.onerror = () => {
+        // Silently ignore in serverless environment
+      };
+
+      ws.onclose = () => {
+        setTimeout(initWebSocket, 5000);
+      };
+    } catch (e) {
+      console.warn('[MediaWall] WebSocket skipped, using polling/BroadcastChannel:', e);
+    }
+  }
+
+  // 3. HTTP Polling Fallback (For Vercel Serverless where WebSocket is not supported)
+  let lastPollTime = Date.now();
+
+  async function pollServerForUpdates() {
+    const isWsOpen = ws && ws.readyState === WebSocket.OPEN;
+    const pollInterval = isWsOpen ? 6000 : 1500;
+
+    try {
+      const res = await fetch(`/api/characters/poll?since=${lastPollTime}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (data.serverTime) {
+            lastPollTime = data.serverTime;
+          }
+          if (data.config && data.config.theme && data.config.theme !== currentTheme) {
+            applyTheme(data.config);
+          }
+          if (Array.isArray(data.characters)) {
+            data.characters.forEach(c => {
+              handleIncomingAction({
+                type: 'SPAWN_CHARACTER',
+                character: c
+              });
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Silently ignore temporary network hiccups
+    } finally {
+      setTimeout(pollServerForUpdates, pollInterval);
+    }
   }
 
   // Start System
   initAmbientParticles();
   initWebSocket();
+  pollServerForUpdates();
   requestAnimationFrame(animate);
 
 })();

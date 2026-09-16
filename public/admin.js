@@ -32,48 +32,70 @@
     lifetimeSeconds: 180
   };
 
+  let syncChannel = null;
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      syncChannel = new BroadcastChannel('mediaart_live_sync');
+      syncChannel.onmessage = (event) => {
+        if (event.data && event.data.type === 'TEMPLATES_UPDATED' && event.data.templates) {
+          renderAdminTemplates(event.data.templates);
+        }
+      };
+    } catch (e) {
+      console.warn('BroadcastChannel not available:', e);
+    }
+  }
+
   // ----------------------------------------------------
-  // WebSocket Connection
+  // WebSocket Connection (Local/VPS Persistent WS)
   // ----------------------------------------------------
   function initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}`);
+    try {
+      ws = new WebSocket(`${protocol}//${window.location.host}`);
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'REGISTER_CLIENT', role: 'admin' }));
-    };
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'REGISTER_CLIENT', role: 'admin' }));
+      };
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        switch (data.type) {
-          case 'INIT_STATE':
-          case 'CONFIG_UPDATED':
-          case 'THEME_CHANGED':
-          case 'LIFECYCLE_UPDATED':
-            if (data.config) {
-              currentConfig = { ...currentConfig, ...data.config };
-              syncUI();
-            }
-            break;
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          switch (data.type) {
+            case 'INIT_STATE':
+            case 'CONFIG_UPDATED':
+            case 'THEME_CHANGED':
+            case 'LIFECYCLE_UPDATED':
+              if (data.config) {
+                currentConfig = { ...currentConfig, ...data.config };
+                syncUI();
+              }
+              break;
 
-          case 'METRICS_UPDATE':
-            if (data.activeCount !== undefined) {
-              metricActiveCount.textContent = data.activeCount;
-            }
-            if (data.fps !== undefined) {
-              metricFps.textContent = data.fps;
-            }
-            break;
+            case 'METRICS_UPDATE':
+              if (data.activeCount !== undefined) {
+                metricActiveCount.textContent = data.activeCount;
+              }
+              if (data.fps !== undefined) {
+                metricFps.textContent = data.fps;
+              }
+              break;
+          }
+        } catch (e) {
+          console.error('Error in WS message:', e);
         }
-      } catch (e) {
-        console.error('Error in WS message:', e);
-      }
-    };
+      };
 
-    ws.onclose = () => {
-      setTimeout(initWebSocket, 2000);
-    };
+      ws.onerror = () => {
+        // Silently handled in serverless environment
+      };
+
+      ws.onclose = () => {
+        setTimeout(initWebSocket, 5000);
+      };
+    } catch (e) {
+      console.warn('WebSocket init skipped (using HTTP/BroadcastChannel sync):', e);
+    }
   }
 
   // ----------------------------------------------------
@@ -129,13 +151,36 @@
   });
 
   function applyTheme(theme, customUrl = '') {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        type: 'CHANGE_THEME',
-        theme: theme,
-        customBackgroundUrl: customUrl
-      }));
+    currentConfig.theme = theme;
+    if (customUrl) currentConfig.customBackgroundUrl = customUrl;
+
+    // 1. BroadcastChannel (Instant sync across tabs/windows)
+    if (syncChannel) {
+      try {
+        syncChannel.postMessage({
+          type: 'THEME_CHANGED',
+          config: { theme: theme, customBackgroundUrl: customUrl }
+        });
+      } catch (e) {}
     }
+
+    // 2. WebSocket (Local/VPS)
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'CHANGE_THEME',
+          theme: theme,
+          customBackgroundUrl: customUrl
+        }));
+      } catch (e) {}
+    }
+
+    // 3. HTTP REST API (Vercel Serverless persistence)
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme: theme, customBackgroundUrl: customUrl })
+    }).catch(e => console.warn('Config save notice:', e));
   }
 
   // ----------------------------------------------------
@@ -227,20 +272,57 @@
 
     updateLifetimeDisplay(val);
 
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        type: 'UPDATE_LIFECYCLE',
-        lifetimeSeconds: val
-      }));
+    // 1. BroadcastChannel
+    if (syncChannel) {
+      try {
+        syncChannel.postMessage({
+          type: 'LIFECYCLE_UPDATED',
+          lifetimeSeconds: val
+        });
+      } catch (e) {}
     }
+
+    // 2. WebSocket
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'UPDATE_LIFECYCLE',
+          lifetimeSeconds: val
+        }));
+      } catch (e) {}
+    }
+
+    // 3. HTTP REST API
+    fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'UPDATE_LIFECYCLE', payload: { lifetimeSeconds: val } })
+    }).catch(e => {});
   }
 
   // Clear all characters
   btnClearAll.addEventListener('click', () => {
     if (confirm('현재 미디어월의 모든 캐릭터를 즉시 페이드아웃 퇴장시키겠습니까?')) {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'CLEAR_ALL_CHARACTERS' }));
+      // 1. BroadcastChannel
+      if (syncChannel) {
+        try {
+          syncChannel.postMessage({ type: 'CLEAR_ALL_CHARACTERS' });
+        } catch (e) {}
       }
+
+      // 2. WebSocket
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ type: 'CLEAR_ALL_CHARACTERS' }));
+        } catch (e) {}
+      }
+
+      // 3. HTTP REST API
+      fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'CLEAR_ALL_CHARACTERS' })
+      }).catch(e => {});
     }
   });
 
@@ -1006,24 +1088,58 @@
   });
 
   // Action: Spawn to Media Wall
-  btnAdSpawn.addEventListener('click', () => {
+  btnAdSpawn.addEventListener('click', async () => {
     if (!importedChar) {
       alert('먼저 Animated Drawings 파일을 업로드해주세요.');
       return;
     }
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      alert('미디어 서버와 연결 중입니다. 잠시 후 다시 시도해주세요.');
-      return;
-    }
 
-    ws.send(JSON.stringify({
-      type: 'SPAWN_CHARACTER',
+    btnAdSpawn.disabled = true;
+    btnAdSpawn.innerHTML = '<span>⏳</span> 미디어월 송출 중...';
+
+    const charPayload = {
+      id: 'char_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
       dataUrl: importedChar.dataUrl,
       skeleton: importedChar.skeleton,
       templateId: 'animated_drawings',
       motionType: adMotionSelect.value,
-      scale: 1.0
-    }));
+      scale: 1.0,
+      timestamp: Date.now()
+    };
+
+    // 1. BroadcastChannel (Instant peer-to-peer across tabs)
+    if (syncChannel) {
+      try {
+        syncChannel.postMessage({
+          type: 'SPAWN_CHARACTER',
+          character: charPayload
+        });
+      } catch (e) {}
+    }
+
+    // 2. WebSocket (Local/VPS)
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'SPAWN_CHARACTER',
+          ...charPayload
+        }));
+      } catch (e) {}
+    }
+
+    // 3. HTTP REST API (/api/spawn - Vercel Serverless persistence)
+    try {
+      await fetch('/api/spawn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(charPayload)
+      });
+    } catch (e) {
+      console.warn('HTTP spawn error:', e);
+    }
+
+    btnAdSpawn.disabled = false;
+    btnAdSpawn.innerHTML = '<span>🚀</span> 미디어월 대형 스크린으로 즉시 송출';
 
     alert(`🚀 '${importedChar.name}' 캐릭터가 대형 미디어월 스크린에 즉시 등장했습니다!\n미디어월 화면을 확인해보세요.`);
   });

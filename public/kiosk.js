@@ -89,28 +89,49 @@
   ];
   const customTemplateImages = {};
 
+  let syncChannel = null;
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      syncChannel = new BroadcastChannel('mediaart_live_sync');
+      syncChannel.onmessage = (e) => {
+        if (e.data && e.data.type === 'TEMPLATES_UPDATED' && e.data.templates) {
+          updateTemplates(e.data.templates);
+        }
+      };
+    } catch (err) {
+      console.warn('BroadcastChannel not available:', err);
+    }
+  }
+
   // Setup WebSocket connection for instant broadcast
   function initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}`);
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'REGISTER_CLIENT', role: 'kiosk' }));
-    };
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'INIT_STATE' && data.templates) {
-          updateTemplates(data.templates);
-        } else if (data.type === 'TEMPLATES_UPDATED' && data.templates) {
-          updateTemplates(data.templates);
+    try {
+      ws = new WebSocket(`${protocol}//${window.location.host}`);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'REGISTER_CLIENT', role: 'kiosk' }));
+      };
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'INIT_STATE' && data.templates) {
+            updateTemplates(data.templates);
+          } else if (data.type === 'TEMPLATES_UPDATED' && data.templates) {
+            updateTemplates(data.templates);
+          }
+        } catch (err) {
+          console.error('Kiosk WS message error:', err);
         }
-      } catch (err) {
-        console.error('Kiosk WS message error:', err);
-      }
-    };
-    ws.onclose = () => {
-      setTimeout(initWebSocket, 2000);
-    };
+      };
+      ws.onerror = () => {
+        // Silently handle serverless environment where WS is disabled
+      };
+      ws.onclose = () => {
+        setTimeout(initWebSocket, 5000);
+      };
+    } catch (e) {
+      console.warn('WebSocket init skipped (using HTTP/BroadcastChannel sync):', e);
+    }
   }
   initWebSocket();
 
@@ -1506,21 +1527,62 @@
   // ----------------------------------------------------
   // PRD P0-1 / P0-3: One-Click Send to Media Wall (< 1 second)
   // ----------------------------------------------------
-  btnSendWall.addEventListener('click', () => {
-    if (!processedCharacter || !ws || ws.readyState !== WebSocket.OPEN) {
-      alert('미디어 서버와 연결 중입니다. 잠시 후 다시 시도해주세요.');
+  btnSendWall.addEventListener('click', async () => {
+    if (!processedCharacter) {
+      alert('먼저 그림을 채색하고 [AI 애니메이션 변환]을 진행해주세요!');
       return;
     }
 
-    // Send payload via WebSocket with user-customized skeleton
-    ws.send(JSON.stringify({
-      type: 'SPAWN_CHARACTER',
+    btnSendWall.disabled = true;
+    btnSendWall.innerHTML = '<span>🚀</span> 대형 스크린 전송 중...';
+
+    const charPayload = {
+      id: 'char_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
       dataUrl: processedCharacter.dataUrl,
       skeleton: processedCharacter.skeleton,
       templateId: processedCharacter.templateId,
       motionType: processedCharacter.motionType,
-      scale: 1.0
-    }));
+      scale: 1.0,
+      timestamp: Date.now()
+    };
+
+    // 1. BroadcastChannel (Instant 0ms delivery for tabs on same browser/device)
+    if (syncChannel) {
+      try {
+        syncChannel.postMessage({
+          type: 'SPAWN_CHARACTER',
+          character: charPayload
+        });
+      } catch (e) {
+        console.warn('BroadcastChannel send error:', e);
+      }
+    }
+
+    // 2. WebSocket (If available/connected on local or dedicated server)
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'SPAWN_CHARACTER',
+          ...charPayload
+        }));
+      } catch (e) {
+        console.warn('WebSocket send error:', e);
+      }
+    }
+
+    // 3. HTTP REST API (/api/spawn - Works reliably on Vercel Serverless across all devices)
+    try {
+      await fetch('/api/spawn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(charPayload)
+      });
+    } catch (e) {
+      console.warn('HTTP spawn notice:', e);
+    }
+
+    btnSendWall.disabled = false;
+    btnSendWall.innerHTML = '<span>🚀</span> 대형 스크린으로 즉시 전송';
 
     closePreviewModal();
 
