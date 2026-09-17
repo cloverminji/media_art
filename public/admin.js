@@ -630,7 +630,12 @@
       card.className = 'admin-template-card';
 
       const isCustom = !t.isBuiltin;
-      const motionKor = t.motionType === 'swim' ? '🌊 유영' : t.motionType === 'space' ? '🪐 부유' : '🚶 보행';
+      const motionKor = 
+        t.motionType === 'dance_full' ? '💃 전신 댄스' :
+        t.motionType === 'dance_lower' ? '🕺 하체 댄스' :
+        t.motionType === 'funny' ? '🤪 웃긴' :
+        t.motionType === 'swim' ? '🌊 유영' :
+        t.motionType === 'space' ? '🪐 부유' : '🚶 워킹';
 
       // Thumbnail
       let thumbHtml = '';
@@ -726,11 +731,14 @@
       let imageFile = null;
       let configFile = null;
       let zipFile = null;
+      let videoFile = null;
 
       fileList.forEach(f => {
         const name = f.name.toLowerCase();
         if (name.endsWith('.zip')) {
           zipFile = f;
+        } else if (f.type.startsWith('video/') || name.endsWith('.mp4') || name.endsWith('.webm')) {
+          videoFile = f;
         } else if (f.type.startsWith('image/') || name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
           imageFile = f;
         } else if (name.endsWith('.yaml') || name.endsWith('.yml') || name.endsWith('.json')) {
@@ -739,20 +747,29 @@
       });
 
       let imageDataUrl = '';
+      let videoDataUrl = '';
       let rawConfigText = '';
       let sourceInfo = '';
 
-      // Case 1: ZIP Archive
-      if (zipFile && window.JSZip) {
+      // Case 1: Direct Video File (.mp4 / .webm)
+      if (videoFile) {
+        sourceInfo = videoFile.name;
+        videoDataUrl = await fileToDataURL(videoFile);
+      }
+      // Case 2: ZIP Archive
+      else if (zipFile && window.JSZip) {
         sourceInfo = zipFile.name;
         const zip = await JSZip.loadAsync(zipFile);
         let foundImg = null;
         let foundCfg = null;
+        let foundVid = null;
 
         zip.forEach((relPath, entry) => {
           const lower = relPath.toLowerCase();
           if (!entry.dir) {
-            if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+            if (lower.endsWith('.mp4') || lower.endsWith('.webm')) {
+              foundVid = entry;
+            } else if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
               foundImg = entry;
             } else if (lower.endsWith('.yaml') || lower.endsWith('.yml') || lower.endsWith('.json')) {
               foundCfg = entry;
@@ -760,6 +777,10 @@
           }
         });
 
+        if (foundVid) {
+          const vidBlob = await foundVid.async('blob');
+          videoDataUrl = await blobToDataURL(vidBlob);
+        }
         if (foundImg) {
           const imgBlob = await foundImg.async('blob');
           imageDataUrl = await blobToDataURL(imgBlob);
@@ -768,7 +789,7 @@
           rawConfigText = await foundCfg.async('text');
         }
       } 
-      // Case 2: Individual Image + Config files
+      // Case 3: Individual Image + Config files
       else {
         if (imageFile) {
           imageDataUrl = await fileToDataURL(imageFile);
@@ -778,6 +799,77 @@
           rawConfigText = await fileToText(configFile);
           sourceInfo += (sourceInfo ? ' + ' : '') + configFile.name;
         }
+      }
+
+      // Handle Video Asset Workflow
+      if (videoDataUrl) {
+        const video = document.createElement('video');
+        video.src = videoDataUrl;
+        video.crossOrigin = 'anonymous';
+        video.autoplay = true;
+        video.loop = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute('webkit-playsinline', 'true');
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('muted', 'true');
+
+        const onVideoLoaded = () => {
+          const vw = video.videoWidth || 320;
+          const vh = video.videoHeight || 320;
+
+          // Extract first frame as clean line-art poster
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = vw;
+          tempCanvas.height = vh;
+          const tCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+          tCtx.drawImage(video, 0, 0, vw, vh);
+
+          // Remove white background for poster
+          const frameImgData = tCtx.getImageData(0, 0, vw, vh);
+          const d = frameImgData.data;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i] > 215 && d[i + 1] > 215 && d[i + 2] > 215) {
+              d[i + 3] = 0;
+            }
+          }
+          tCtx.putImageData(frameImgData, 0, 0);
+          const posterDataUrl = tempCanvas.toDataURL('image/png');
+          const posterImg = new Image();
+          posterImg.src = posterDataUrl;
+
+          const finalSkeleton = normalizeSkeletonToImage(null, vw, vh);
+
+          importedChar = {
+            mediaType: 'video',
+            dataUrl: posterDataUrl, // Clean lineart poster for templates & fallback
+            videoUrl: videoDataUrl, // Full MP4 video for media wall
+            skeleton: finalSkeleton,
+            motionType: adMotionSelect.value || 'dance_full',
+            name: (videoFile ? videoFile.name : 'Animated Drawings Video').replace(/\.[^/.]+$/, ''),
+            width: vw,
+            height: vh,
+            videoEl: video,
+            charImg: posterImg,
+            chromaCanvas: document.createElement('canvas')
+          };
+          importedChar.chromaCanvas.width = vw;
+          importedChar.chromaCanvas.height = vh;
+
+          adCharName.textContent = importedChar.name;
+          adSourceFilename.textContent = sourceInfo || 'Meta Animated Drawings MP4 영상';
+          adRiggingStatus.textContent = 'Animated Drawings MP4 영상 루프 로드 완료';
+          adJointCount.textContent = 'MP4 Video Loop';
+
+          adPreviewCard.style.display = 'flex';
+          startAdPreviewLoop();
+          adPreviewCard.scrollIntoView({ behavior: 'smooth' });
+          video.play().catch(e => console.warn('Admin video play:', e));
+        };
+
+        video.addEventListener('loadeddata', onVideoLoaded, { once: true });
+        video.load();
+        return;
       }
 
       if (!imageDataUrl && configFile && rawConfigText) {
@@ -791,7 +883,7 @@
       }
 
       if (!imageDataUrl) {
-        alert('Animated Drawings 캐릭터 이미지 파일(PNG/JPG) 또는 압축 파일(.ZIP)을 포함해주세요.');
+        alert('Animated Drawings MP4 동영상 파일(.MP4), 캐릭터 이미지(PNG/JPG), 또는 압축 파일(.ZIP)을 업로드해주세요.');
         return;
       }
 
@@ -832,7 +924,9 @@
         const finalSkeleton = normalizeSkeletonToImage(parsedSkeleton, w, h);
 
         importedChar = {
+          mediaType: 'image',
           dataUrl: finalDataUrl,
+          videoUrl: null,
           skeleton: finalSkeleton,
           motionType: adMotionSelect.value || 'walk',
           name: imageFile ? imageFile.name.replace(/\.[^/.]+$/, '') : 'Animated Character',
@@ -1021,12 +1115,27 @@
       const cy = adPreviewCanvas.height / 2;
 
       const motion = adMotionSelect.value || 'walk';
-      const isSwim = (motion === 'swim');
-      const isSpace = (motion === 'space');
+      let bob = 0;
+      let tilt = 0;
 
-      const bobSpeed = isSwim ? 3.5 : isSpace ? 2.0 : 4.5;
-      const bob = Math.sin(t * bobSpeed) * 6;
-      const tilt = Math.sin(t * 2.2) * (isSwim ? 0.1 : 0.07);
+      if (motion === 'dance_full' || motion === 'dance') {
+        bob = -Math.abs(Math.sin(t * 4.5)) * 10;
+        tilt = Math.sin(t * 2.8) * 0.16;
+      } else if (motion === 'dance_lower') {
+        const bounce = Math.max(0, Math.sin(t * 5.0));
+        bob = -bounce * 12;
+        tilt = Math.sin(t * 2.5) * 0.09;
+      } else if (motion === 'funny') {
+        bob = Math.sin(t * 3.0) * 10;
+        tilt = Math.sin(t * 5.0) * 0.22 + Math.sin(t * 1.5) * 0.12;
+      } else if (motion === 'swim') {
+        bob = Math.sin(t * 3.5) * 6;
+        tilt = Math.sin(t * 2.2) * 0.12;
+      } else {
+        // walk
+        bob = -Math.abs(Math.sin(t * 4.2)) * 6;
+        tilt = Math.sin(t * 2.1) * 0.07;
+      }
 
       const scale = 140 / Math.max(importedChar.width, importedChar.height);
       const dw = importedChar.width * scale;
@@ -1036,41 +1145,57 @@
       adCtx.translate(cx, cy + bob);
       adCtx.rotate(tilt);
 
-      // Draw character
-      if (importedChar.charImg && importedChar.charImg.complete) {
+      // Draw character (Video frame with real-time chroma-key or Image)
+      if (importedChar.mediaType === 'video' && importedChar.videoEl && importedChar.chromaCanvas) {
+        const cw = importedChar.chromaCanvas.width;
+        const ch = importedChar.chromaCanvas.height;
+        const cCtx = importedChar.chromaCanvas.getContext('2d', { willReadFrequently: true });
+        cCtx.drawImage(importedChar.videoEl, 0, 0, cw, ch);
+        const imgData = cCtx.getImageData(0, 0, cw, ch);
+        const d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i] > 215 && d[i + 1] > 215 && d[i + 2] > 215) {
+            d[i + 3] = 0;
+          }
+        }
+        cCtx.putImageData(imgData, 0, 0);
+        adCtx.drawImage(importedChar.chromaCanvas, -dw / 2, -dh / 2, dw, dh);
+      } else if (importedChar.charImg && importedChar.charImg.complete) {
         adCtx.drawImage(importedChar.charImg, -dw / 2, -dh / 2, dw, dh);
       }
 
-      // Draw Skeleton Bones overlay
-      const skel = importedChar.skeleton;
-      const sx = (val) => (val - importedChar.width / 2) * scale;
-      const sy = (val) => (val - importedChar.height / 2) * scale;
+      // Draw Skeleton Bones overlay if non-video
+      if (importedChar.mediaType !== 'video') {
+        const skel = importedChar.skeleton;
+        const sx = (val) => (val - importedChar.width / 2) * scale;
+        const sy = (val) => (val - importedChar.height / 2) * scale;
 
-      adCtx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
-      adCtx.lineWidth = 2.2;
-      adCtx.lineCap = 'round';
+        adCtx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+        adCtx.lineWidth = 2.2;
+        adCtx.lineCap = 'round';
 
-      // Spine
-      adCtx.beginPath();
-      adCtx.moveTo(sx(skel.head.x), sy(skel.head.y));
-      adCtx.lineTo(sx(skel.pelvis.x), sy(skel.pelvis.y));
-      // Arms
-      adCtx.moveTo(sx(skel.hand_l.x), sy(skel.hand_l.y));
-      adCtx.lineTo(sx(skel.shoulder_l.x), sy(skel.shoulder_l.y));
-      adCtx.lineTo(sx(skel.shoulder_r.x), sy(skel.shoulder_r.y));
-      adCtx.lineTo(sx(skel.hand_r.x), sy(skel.hand_r.y));
-      // Legs
-      adCtx.moveTo(sx(skel.foot_l.x), sy(skel.foot_l.y));
-      adCtx.lineTo(sx(skel.pelvis.x), sy(skel.pelvis.y));
-      adCtx.lineTo(sx(skel.foot_r.x), sy(skel.foot_r.y));
-      adCtx.stroke();
-
-      // Joints
-      adCtx.fillStyle = '#10b981';
-      for (const k in skel) {
+        // Spine
         adCtx.beginPath();
-        adCtx.arc(sx(skel[k].x), sy(skel[k].y), 3.5, 0, Math.PI * 2);
-        adCtx.fill();
+        adCtx.moveTo(sx(skel.head.x), sy(skel.head.y));
+        adCtx.lineTo(sx(skel.pelvis.x), sy(skel.pelvis.y));
+        // Arms
+        adCtx.moveTo(sx(skel.hand_l.x), sy(skel.hand_l.y));
+        adCtx.lineTo(sx(skel.shoulder_l.x), sy(skel.shoulder_l.y));
+        adCtx.lineTo(sx(skel.shoulder_r.x), sy(skel.shoulder_r.y));
+        adCtx.lineTo(sx(skel.hand_r.x), sy(skel.hand_r.y));
+        // Legs
+        adCtx.moveTo(sx(skel.foot_l.x), sy(skel.foot_l.y));
+        adCtx.lineTo(sx(skel.pelvis.x), sy(skel.pelvis.y));
+        adCtx.lineTo(sx(skel.foot_r.x), sy(skel.foot_r.y));
+        adCtx.stroke();
+
+        // Joints
+        adCtx.fillStyle = '#10b981';
+        for (const k in skel) {
+          adCtx.beginPath();
+          adCtx.arc(sx(skel[k].x), sy(skel[k].y), 3.5, 0, Math.PI * 2);
+          adCtx.fill();
+        }
       }
 
       adCtx.restore();
@@ -1099,7 +1224,9 @@
 
     const charPayload = {
       id: 'char_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-      dataUrl: importedChar.dataUrl,
+      dataUrl: importedChar.videoUrl || importedChar.dataUrl,
+      videoUrl: importedChar.videoUrl || null,
+      mediaType: importedChar.mediaType || 'image',
       skeleton: importedChar.skeleton,
       templateId: 'animated_drawings',
       motionType: adMotionSelect.value,

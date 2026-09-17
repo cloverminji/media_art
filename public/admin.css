@@ -933,6 +933,13 @@ html, body {
   border-radius: 6px;
 }
 
+.file-badge.video-badge {
+  background: rgba(236, 72, 153, 0.2);
+  border-color: #ec4899;
+  color: #f472b6;
+  box-shadow: 0 0 8px rgba(236, 72, 153, 0.4);
+}
+
 /* AD Preview Card */
 .ad-preview-card {
   background: rgba(15, 23, 42, 0.6);

@@ -79,10 +79,10 @@
         <div class="panel-section">
           <label class="section-title">브러시 굵기</label>
           <div class="brush-sizes">
-            <button class="brush-btn" data-size="4"><span style="width: 4px; height: 4px;"></span></button>
-            <button class="brush-btn active" data-size="8"><span style="width: 8px; height: 8px;"></span></button>
-            <button class="brush-btn" data-size="16"><span style="width: 16px; height: 16px;"></span></button>
-            <button class="brush-btn" data-size="28"><span style="width: 24px; height: 24px;"></span></button>
+            <button class="brush-btn" data-size="6"><span style="width: 6px; height: 6px;"></span></button>
+            <button class="brush-btn active" data-size="14"><span style="width: 14px; height: 14px;"></span></button>
+            <button class="brush-btn" data-size="26"><span style="width: 22px; height: 22px;"></span></button>
+            <button class="brush-btn" data-size="44"><span style="width: 30px; height: 30px;"></span></button>
           </div>
         </div>
 
@@ -236,9 +236,33 @@
                 <span id="keypoint-count" class="info-val highlight">13 Keypoints (수동 보정 반영)</span>
               </div>
               <div class="info-row">
-                <span class="info-label">모션 타입:</span>
-                <span id="motion-type-label" class="info-val">자율 루프 보행 (Harmonic Walk)</span>
+                <span class="info-label">모션 상태:</span>
+                <span id="motion-type-label" class="info-val">🚶 워킹 (Harmonic Walk)</span>
               </div>
+
+              <!-- 4 Motion Options Selector -->
+              <div class="kiosk-motion-picker">
+                <label class="group-title">동작(모션) 선택</label>
+                <div class="motion-options-grid" id="kiosk-motion-options">
+                  <button type="button" class="btn-motion-opt" data-motion="dance_full">
+                    <span class="opt-icon">💃</span>
+                    <span class="opt-label">전신 댄스</span>
+                  </button>
+                  <button type="button" class="btn-motion-opt active" data-motion="walk">
+                    <span class="opt-icon">🚶</span>
+                    <span class="opt-label">워킹</span>
+                  </button>
+                  <button type="button" class="btn-motion-opt" data-motion="dance_lower">
+                    <span class="opt-icon">🕺</span>
+                    <span class="opt-label">하체 댄스</span>
+                  </button>
+                  <button type="button" class="btn-motion-opt" data-motion="funny">
+                    <span class="opt-icon">🤪</span>
+                    <span class="opt-label">웃긴</span>
+                  </button>
+                </div>
+              </div>
+
               <div class="info-row">
                 <span class="info-label">데이터 관리:</span>
                 <span class="info-val highlight">메모리 휘발성 (Zero-Persistence)</span>

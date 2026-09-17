@@ -133,6 +133,9 @@
     constructor(data) {
       this.id = data.id;
       this.dataUrl = data.dataUrl;
+      this.videoUrl = data.videoUrl || null;
+      this.mediaType = data.mediaType || (typeof data.dataUrl === 'string' && (data.dataUrl.startsWith('data:video/') || data.dataUrl.includes('.mp4')) ? 'video' : 'image');
+      this.isVideo = (this.mediaType === 'video') || !!this.videoUrl;
       this.skeleton = data.skeleton || null;
       this.motionType = data.motionType || (currentTheme === 'ocean' ? 'swim' : 'walk');
       this.lifetimeSeconds = data.lifetimeSeconds || defaultLifetime;
@@ -140,59 +143,113 @@
       this.state = 'active'; // 'spawning', 'active', 'fading', 'dead'
       this.opacity = 0; // starts with fade-in
 
-      // Image element loaded in memory (zero persistence)
-      this.image = new Image();
-      this.imageLoaded = false;
-      this.drawable = null;
-      this.image.onload = () => {
-        const nw = this.image.naturalWidth;
-        const nh = this.image.naturalHeight;
-
-        try {
-          const testCanvas = document.createElement('canvas');
-          testCanvas.width = nw;
-          testCanvas.height = nh;
-          const tCtx = testCanvas.getContext('2d', { willReadFrequently: true });
-          tCtx.drawImage(this.image, 0, 0);
-          const imgData = tCtx.getImageData(0, 0, nw, nh);
-          const d = imgData.data;
-          // Check corner pixels
-          const corners = [0, (nw - 1) * 4, ((nh - 1) * nw) * 4, ((nh * nw) - 1) * 4];
-          const isWhiteBg = corners.every(idx => d[idx] > 230 && d[idx + 1] > 230 && d[idx + 2] > 230 && d[idx + 3] > 200);
-
-          if (isWhiteBg) {
-            for (let i = 0; i < d.length; i += 4) {
-              if (d[i] > 225 && d[i + 1] > 225 && d[i + 2] > 225) {
-                d[i + 3] = 0;
-              }
-            }
-            tCtx.putImageData(imgData, 0, 0);
-            this.drawable = testCanvas;
-          } else {
-            this.drawable = this.image;
-          }
-        } catch (e) {
-          this.drawable = this.image;
-        }
-
-        this.imageLoaded = true;
-        this.width = 160 * (data.scale || 1.0);
-        this.height = (nh / nw) * this.width;
-      };
-      this.image.src = data.dataUrl;
-
       // Motion & physics bounds
       const w = window.innerWidth;
       const h = window.innerHeight;
       this.x = Math.random() * (w - 300) + 150;
-      this.y = currentTheme === 'ocean' || currentTheme === 'space' 
+      this.y = (this.motionType === 'swim' || currentTheme === 'ocean' || currentTheme === 'space') 
                ? Math.random() * (h - 300) + 150 
-               : h - 180; // Walk along ground in forest
+               : h - 180; // Walk along ground in forest/earth
       this.baseY = this.y;
-      this.vx = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 60 + 50); // pixels per sec
+      this.vx = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 55 + 45); // pixels per sec
       this.vy = 0;
       this.facing = this.vx >= 0 ? 1 : -1;
       this.phase = Math.random() * Math.PI * 2;
+
+      this.imageLoaded = false;
+      this.drawable = null;
+
+      if (this.isVideo) {
+        // HTML5 Video with Real-Time Offscreen Chroma-Key (Animated Drawings MP4)
+        this.video = document.createElement('video');
+        this.video.src = this.videoUrl || this.dataUrl;
+        this.video.crossOrigin = 'anonymous';
+        this.video.autoplay = true;
+        this.video.loop = true;
+        this.video.muted = true;
+        this.video.playsInline = true;
+        this.video.setAttribute('webkit-playsinline', 'true');
+        this.video.setAttribute('playsinline', 'true');
+        this.video.setAttribute('muted', 'true');
+
+        this.chromaCanvas = document.createElement('canvas');
+        this.chromaCtx = this.chromaCanvas.getContext('2d', { willReadFrequently: true });
+
+        const onVideoReady = () => {
+          if (this.imageLoaded) return;
+          const nw = this.video.videoWidth || 320;
+          const nh = this.video.videoHeight || 320;
+          this.width = 180 * (data.scale || 1.0);
+          this.height = (nh / nw) * this.width;
+          this.chromaCanvas.width = nw;
+          this.chromaCanvas.height = nh;
+          this.imageLoaded = true;
+          this.video.play().catch(e => console.warn('Video autoplay:', e));
+        };
+
+        this.video.addEventListener('loadedmetadata', onVideoReady);
+        this.video.addEventListener('canplay', onVideoReady);
+        this.video.load();
+      } else {
+        // Static Image element loaded in memory (zero persistence)
+        this.image = new Image();
+        this.image.onload = () => {
+          const nw = this.image.naturalWidth;
+          const nh = this.image.naturalHeight;
+
+          try {
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = nw;
+            testCanvas.height = nh;
+            const tCtx = testCanvas.getContext('2d', { willReadFrequently: true });
+            tCtx.drawImage(this.image, 0, 0);
+            const imgData = tCtx.getImageData(0, 0, nw, nh);
+            const d = imgData.data;
+            // Only remove background if outer corners are solid white AND not transparent
+            const corners = [0, (nw - 1) * 4, ((nh - 1) * nw) * 4, ((nh * nw) - 1) * 4];
+            const hasOpaqueCorners = corners.every(idx => d[idx + 3] > 200);
+            const isWhiteBg = hasOpaqueCorners && corners.every(idx => d[idx] > 230 && d[idx + 1] > 230 && d[idx + 2] > 230);
+
+            if (isWhiteBg) {
+              for (let i = 0; i < d.length; i += 4) {
+                if (d[i] > 225 && d[i + 1] > 225 && d[i + 2] > 225) {
+                  d[i + 3] = 0;
+                }
+              }
+              tCtx.putImageData(imgData, 0, 0);
+              this.drawable = testCanvas;
+            } else {
+              this.drawable = this.image;
+            }
+          } catch (e) {
+            this.drawable = this.image;
+          }
+
+          this.imageLoaded = true;
+          this.width = 160 * (data.scale || 1.0);
+          this.height = (nh / nw) * this.width;
+        };
+        this.image.src = data.dataUrl;
+      }
+    }
+
+    dispose() {
+      if (this.video) {
+        try {
+          this.video.pause();
+          this.video.src = '';
+          this.video.load();
+        } catch (e) {}
+        this.video = null;
+      }
+      if (this.chromaCanvas) {
+        this.chromaCanvas.width = 1;
+        this.chromaCanvas.height = 1;
+        this.chromaCanvas = null;
+        this.chromaCtx = null;
+      }
+      this.drawable = null;
+      this.image = null;
     }
 
     update(dt) {
@@ -219,22 +276,35 @@
       const w = window.innerWidth;
       const h = window.innerHeight;
 
-      // Behavior physics per theme
+      // Dynamic motion physics per motionType & theme
       this.phase += dt * 3.5;
+      const ground = h - this.height - 40;
 
-      if (currentTheme === 'ocean') {
-        // Swimming undulation
+      if (this.motionType === 'dance_full' || this.motionType === 'dance') {
+        // 1. 전신 댄스: 리드미컬 상하좌우 그루브, 비트 탄성 바운스
+        this.x += this.vx * dt * 0.45;
+        this.y = ground - Math.abs(Math.sin(this.phase * 1.6)) * 32;
+      } else if (this.motionType === 'dance_lower') {
+        // 2. 하체 댄스: 통통 튀는 스쿼트 앤 팝, 빠른 셔플 킥
+        this.x += this.vx * dt * 0.65;
+        const hop = Math.sin(this.phase * 2.2);
+        this.y = ground - (hop > 0 ? hop * 35 : 0);
+      } else if (this.motionType === 'funny') {
+        // 3. 웃긴: 젤리 같은 비선형 왜곡, 뒤뚱거리는 코믹 바운스
+        this.x += this.vx * dt * (0.8 + Math.sin(this.phase * 2.0) * 0.4);
+        this.y = (ground - 20) - Math.abs(Math.sin(this.phase * 1.3)) * 45;
+      } else if (this.motionType === 'swim' || (currentTheme === 'ocean' && !this.motionType)) {
+        // 해양 자율 유영
         this.x += this.vx * dt;
         this.y = this.baseY + Math.sin(this.phase) * 35;
-      } else if (currentTheme === 'space') {
-        // Zero-gravity drift
+      } else if (this.motionType === 'space' || (currentTheme === 'space' && !this.motionType)) {
+        // 무중력 유영
         this.x += this.vx * dt * 0.7;
         this.y = this.baseY + Math.cos(this.phase * 0.7) * 45;
       } else {
-        // Forest/Earth ground walk with bobbing stride
+        // 4. 워킹 (walk, default): 안정적인 보행 주기
         this.x += this.vx * dt;
-        const ground = h - this.height - 40;
-        this.y = ground - Math.abs(Math.sin(this.phase * 1.5)) * 25;
+        this.y = ground - Math.abs(Math.sin(this.phase * 1.5)) * 24;
       }
 
       // Boundary bouncing
@@ -263,17 +333,41 @@
       // Facing flip
       ctx.scale(this.facing, 1);
 
-      // Dynamic motion pivot based on customized skeleton
-      let pivotYRatio = 0.5;
-      if (this.skeleton && this.skeleton.pelvis && this.image.naturalHeight > 0) {
-        pivotYRatio = this.skeleton.pelvis.y / this.image.naturalHeight;
+      // Articulated Motion Dynamics: tilt, bob, squash & stretch
+      let tilt = 0;
+      let bob = 0;
+      let squishX = 1;
+      let squishY = 1;
+
+      if (this.motionType === 'dance_full' || this.motionType === 'dance') {
+        tilt = Math.sin(this.phase * 1.4) * 0.16;
+        bob = -Math.abs(Math.sin(this.phase * 2.8)) * 8;
+        squishY = 1 + Math.sin(this.phase * 2.8) * 0.08;
+        squishX = 1 - Math.sin(this.phase * 2.8) * 0.06;
+      } else if (this.motionType === 'dance_lower') {
+        tilt = Math.sin(this.phase * 1.8) * 0.10;
+        const bounce = Math.max(0, Math.sin(this.phase * 2.5));
+        bob = -bounce * 10;
+        squishY = 1 - bounce * 0.12;
+        squishX = 1 + bounce * 0.10;
+      } else if (this.motionType === 'funny') {
+        tilt = Math.sin(this.phase * 3.0) * 0.22 + Math.sin(this.phase * 0.8) * 0.12;
+        bob = Math.sin(this.phase * 1.8) * 12;
+        squishY = 1 + Math.sin(this.phase * 3.6) * 0.18;
+        squishX = 1 - Math.sin(this.phase * 3.6) * 0.15;
+      } else if (this.motionType === 'swim') {
+        tilt = Math.sin(this.phase * 0.9) * 0.12;
+        bob = Math.sin(this.phase * 1.8) * 6;
+        squishY = 1 + Math.sin(this.phase * 1.8) * 0.04;
+        squishX = 1 - Math.sin(this.phase * 1.8) * 0.03;
+      } else {
+        // walk
+        tilt = (this.vx / 120) * 0.08 + Math.sin(this.phase * 0.8) * 0.07;
+        bob = -Math.abs(Math.sin(this.phase * 2.4)) * 6;
+        squishY = 1 + Math.sin(this.phase * 2.4) * 0.04;
+        squishX = 1 - Math.sin(this.phase * 2.4) * 0.03;
       }
 
-      // Meta Animated Drawings Skeletal Motion Simulation
-      // Secondary tilt & harmonic bounce
-      const isSwim = (this.motionType === 'swim');
-      const tiltSpeed = isSwim ? 1.8 : 2.5;
-      const tilt = (this.vx / 120) * 0.08 + Math.sin(this.phase * 0.8) * 0.08;
       ctx.rotate(tilt);
 
       // Draw shadow/glow under character
@@ -288,24 +382,47 @@
       ctx.fill();
       ctx.restore();
 
-      // Skeletal Deformation (Animated Drawings style harmonic articulation)
-      const bobFreq = isSwim ? 1.8 : 2.4;
-      const bob = Math.sin(this.phase * bobFreq) * 5;
-      const squish = 1 + Math.sin(this.phase * bobFreq) * 0.035;
+      // Render Character Graphic
+      if (this.isVideo) {
+        // Video frame with real-time chroma-key background removal
+        if (this.video && this.video.readyState >= 2 && this.chromaCtx) {
+          const cw = this.chromaCanvas.width;
+          const ch = this.chromaCanvas.height;
+          this.chromaCtx.drawImage(this.video, 0, 0, cw, ch);
+          const imgData = this.chromaCtx.getImageData(0, 0, cw, ch);
+          const d = imgData.data;
+          const len = d.length;
+          for (let i = 0; i < len; i += 4) {
+            if (d[i] > 215 && d[i + 1] > 215 && d[i + 2] > 215) {
+              d[i + 3] = 0;
+            }
+          }
+          this.chromaCtx.putImageData(imgData, 0, 0);
 
-      ctx.drawImage(
-        this.drawable || this.image,
-        -this.width / 2,
-        -this.height / 2 + bob,
-        this.width,
-        this.height * squish
-      );
+          ctx.drawImage(
+            this.chromaCanvas,
+            (-this.width / 2) * squishX,
+            (-this.height / 2 + bob) * squishY,
+            this.width * squishX,
+            this.height * squishY
+          );
+        }
+      } else {
+        // High-definition Drawing Image
+        ctx.drawImage(
+          this.drawable || this.image,
+          (-this.width / 2) * squishX,
+          (-this.height / 2 + bob) * squishY,
+          this.width * squishX,
+          this.height * squishY
+        );
+      }
 
       // Subtle skeletal glow during entrance (first 2.5 seconds) to highlight custom rigging
       if (this.age < 2.5 && this.skeleton) {
         const glowAlpha = Math.max(0, (2.5 - this.age) / 2.5) * 0.6;
-        const scaleX = this.width / (this.image.naturalWidth || this.width);
-        const scaleY = this.height / (this.image.naturalHeight || this.height);
+        const scaleX = this.width / ((this.image && this.image.naturalWidth) || this.width);
+        const scaleY = this.height / ((this.image && this.image.naturalHeight) || this.height);
 
         ctx.save();
         ctx.globalAlpha = this.opacity * glowAlpha;
@@ -392,7 +509,7 @@
       const char = characters[i];
       char.update(dt);
       if (char.state === 'dead') {
-        // Memory cleanup: remove reference to trigger GC
+        char.dispose();
         characters.splice(i, 1);
       } else {
         char.draw(ctx);

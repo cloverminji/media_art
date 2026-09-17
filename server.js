@@ -216,6 +216,8 @@ app.post('/api/spawn', (req, res) => {
   const charItem = {
     id: characterData.id || ('char_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)),
     dataUrl: characterData.dataUrl,
+    videoUrl: characterData.videoUrl || null,
+    mediaType: characterData.mediaType || (characterData.dataUrl && characterData.dataUrl.startsWith('data:video/') ? 'video' : 'image'),
     skeleton: characterData.skeleton || null,
     templateId: characterData.templateId || 'custom',
     motionType: characterData.motionType || 'walk',
@@ -348,10 +350,12 @@ wss.on('connection', (ws) => {
           broadcast({
             type: 'SPAWN_CHARACTER',
             character: {
-              id: 'char_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+              id: data.id || ('char_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)),
               spawnTime: Date.now(),
-              lifetimeSeconds: currentConfig.lifetimeSeconds,
-              dataUrl: data.dataUrl, // base64 transparent PNG
+              lifetimeSeconds: data.lifetimeSeconds || currentConfig.lifetimeSeconds,
+              dataUrl: data.dataUrl, // base64 transparent PNG or video data
+              videoUrl: data.videoUrl || null,
+              mediaType: data.mediaType || (data.dataUrl && data.dataUrl.startsWith('data:video/') ? 'video' : 'image'),
               skeleton: data.skeleton, // bones/rig points
               templateId: data.templateId || 'free',
               motionType: data.motionType || 'walk',

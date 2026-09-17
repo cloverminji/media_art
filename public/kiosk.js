@@ -62,7 +62,7 @@
   let currentMode = 'template'; // 'template' | 'free'
   let currentTemplate = 'dolphin';
   let currentColor = '#2563eb';
-  let currentSize = 8;
+  let currentSize = 14;
   let currentTool = 'brush'; // 'brush' | 'eraser'
   let isDrawing = false;
   let lastX = 0;
@@ -154,222 +154,399 @@
 
   // ----------------------------------------------------
   // Tourism Mascot Templates (PRD P0-1: 템플릿 도안)
+  // 3-Layer Architecture: Solid White Base + Bold Black Outline
   // ----------------------------------------------------
   const TEMPLATES = {
-    dolphin: (ctx, w, h) => {
-      ctx.save();
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+    dolphin: {
+      fill: (ctx, w, h) => {
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
 
-      // Dolphin Body Outline
-      ctx.beginPath();
-      ctx.moveTo(w * 0.25, h * 0.55);
-      ctx.bezierCurveTo(w * 0.28, h * 0.35, w * 0.5, h * 0.3, w * 0.72, h * 0.42);
-      ctx.bezierCurveTo(w * 0.85, h * 0.5, w * 0.88, h * 0.55, w * 0.9, h * 0.58);
-      // Fluke/Tail
-      ctx.lineTo(w * 0.95, h * 0.52);
-      ctx.quadraticCurveTo(w * 0.92, h * 0.6, w * 0.95, h * 0.68);
-      ctx.lineTo(w * 0.88, h * 0.62);
-      // Belly
-      ctx.bezierCurveTo(w * 0.7, h * 0.68, w * 0.45, h * 0.7, w * 0.3, h * 0.62);
-      // Snout
-      ctx.quadraticCurveTo(w * 0.18, h * 0.6, w * 0.15, h * 0.56);
-      ctx.quadraticCurveTo(w * 0.2, h * 0.52, w * 0.25, h * 0.55);
-      ctx.stroke();
+        // Dolphin Body
+        ctx.beginPath();
+        ctx.moveTo(w * 0.25, h * 0.55);
+        ctx.bezierCurveTo(w * 0.28, h * 0.35, w * 0.5, h * 0.3, w * 0.72, h * 0.42);
+        ctx.bezierCurveTo(w * 0.85, h * 0.5, w * 0.88, h * 0.55, w * 0.9, h * 0.58);
+        ctx.lineTo(w * 0.95, h * 0.52);
+        ctx.quadraticCurveTo(w * 0.92, h * 0.6, w * 0.95, h * 0.68);
+        ctx.lineTo(w * 0.88, h * 0.62);
+        ctx.bezierCurveTo(w * 0.7, h * 0.68, w * 0.45, h * 0.7, w * 0.3, h * 0.62);
+        ctx.quadraticCurveTo(w * 0.18, h * 0.6, w * 0.15, h * 0.56);
+        ctx.quadraticCurveTo(w * 0.2, h * 0.52, w * 0.25, h * 0.55);
+        ctx.closePath();
+        ctx.fill();
 
-      // Dorsal Fin
-      ctx.beginPath();
-      ctx.moveTo(w * 0.5, h * 0.33);
-      ctx.quadraticCurveTo(w * 0.55, h * 0.2, w * 0.62, h * 0.22);
-      ctx.quadraticCurveTo(w * 0.58, h * 0.3, w * 0.6, h * 0.36);
-      ctx.stroke();
+        // Dorsal Fin
+        ctx.beginPath();
+        ctx.moveTo(w * 0.5, h * 0.33);
+        ctx.quadraticCurveTo(w * 0.55, h * 0.2, w * 0.62, h * 0.22);
+        ctx.quadraticCurveTo(w * 0.58, h * 0.3, w * 0.6, h * 0.36);
+        ctx.closePath();
+        ctx.fill();
 
-      // Pectoral Fin
-      ctx.beginPath();
-      ctx.moveTo(w * 0.4, h * 0.6);
-      ctx.quadraticCurveTo(w * 0.45, h * 0.74, w * 0.52, h * 0.72);
-      ctx.quadraticCurveTo(w * 0.48, h * 0.63, w * 0.46, h * 0.6);
-      ctx.stroke();
+        // Pectoral Fin
+        ctx.beginPath();
+        ctx.moveTo(w * 0.4, h * 0.6);
+        ctx.quadraticCurveTo(w * 0.45, h * 0.74, w * 0.52, h * 0.72);
+        ctx.quadraticCurveTo(w * 0.48, h * 0.63, w * 0.46, h * 0.6);
+        ctx.closePath();
+        ctx.fill();
 
-      // Eye & Smile
-      ctx.beginPath();
-      ctx.arc(w * 0.3, h * 0.5, 5, 0, Math.PI * 2);
-      ctx.fillStyle = '#1e293b';
-      ctx.fill();
+        ctx.restore();
+      },
+      stroke: (ctx, w, h) => {
+        ctx.save();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 5.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
-      ctx.beginPath();
-      ctx.arc(w * 0.24, h * 0.56, 12, 0.2, Math.PI * 0.6);
-      ctx.stroke();
+        // Dolphin Body Outline
+        ctx.beginPath();
+        ctx.moveTo(w * 0.25, h * 0.55);
+        ctx.bezierCurveTo(w * 0.28, h * 0.35, w * 0.5, h * 0.3, w * 0.72, h * 0.42);
+        ctx.bezierCurveTo(w * 0.85, h * 0.5, w * 0.88, h * 0.55, w * 0.9, h * 0.58);
+        ctx.lineTo(w * 0.95, h * 0.52);
+        ctx.quadraticCurveTo(w * 0.92, h * 0.6, w * 0.95, h * 0.68);
+        ctx.lineTo(w * 0.88, h * 0.62);
+        ctx.bezierCurveTo(w * 0.7, h * 0.68, w * 0.45, h * 0.7, w * 0.3, h * 0.62);
+        ctx.quadraticCurveTo(w * 0.18, h * 0.6, w * 0.15, h * 0.56);
+        ctx.quadraticCurveTo(w * 0.2, h * 0.52, w * 0.25, h * 0.55);
+        ctx.stroke();
 
-      ctx.restore();
+        // Dorsal Fin
+        ctx.beginPath();
+        ctx.moveTo(w * 0.5, h * 0.33);
+        ctx.quadraticCurveTo(w * 0.55, h * 0.2, w * 0.62, h * 0.22);
+        ctx.quadraticCurveTo(w * 0.58, h * 0.3, w * 0.6, h * 0.36);
+        ctx.stroke();
+
+        // Pectoral Fin
+        ctx.beginPath();
+        ctx.moveTo(w * 0.4, h * 0.6);
+        ctx.quadraticCurveTo(w * 0.45, h * 0.74, w * 0.52, h * 0.72);
+        ctx.quadraticCurveTo(w * 0.48, h * 0.63, w * 0.46, h * 0.6);
+        ctx.stroke();
+
+        // Cute Sparkling Eye
+        ctx.beginPath();
+        ctx.arc(w * 0.3, h * 0.5, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(w * 0.29, h * 0.49, 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        // Smile
+        ctx.beginPath();
+        ctx.arc(w * 0.24, h * 0.56, 12, 0.2, Math.PI * 0.6);
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        ctx.restore();
+      },
+      full: (ctx, w, h) => {
+        TEMPLATES.dolphin.fill(ctx, w, h);
+        TEMPLATES.dolphin.stroke(ctx, w, h);
+      }
     },
 
-    tangerine: (ctx, w, h) => {
-      ctx.save();
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+    tangerine: {
+      fill: (ctx, w, h) => {
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
 
-      // Tangerine Body (Round)
-      ctx.beginPath();
-      ctx.arc(w * 0.5, h * 0.52, w * 0.22, 0, Math.PI * 2);
-      ctx.stroke();
+        // Tangerine Body (Round)
+        ctx.beginPath();
+        ctx.arc(w * 0.5, h * 0.52, w * 0.22, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Stem & Leaf
-      ctx.beginPath();
-      ctx.moveTo(w * 0.5, h * 0.3);
-      ctx.lineTo(w * 0.5, h * 0.24);
-      ctx.stroke();
+        // Leaf
+        ctx.beginPath();
+        ctx.moveTo(w * 0.5, h * 0.26);
+        ctx.quadraticCurveTo(w * 0.62, h * 0.22, w * 0.66, h * 0.28);
+        ctx.quadraticCurveTo(w * 0.58, h * 0.34, w * 0.5, h * 0.28);
+        ctx.closePath();
+        ctx.fill();
 
-      ctx.beginPath();
-      ctx.moveTo(w * 0.5, h * 0.26);
-      ctx.quadraticCurveTo(w * 0.62, h * 0.22, w * 0.66, h * 0.28);
-      ctx.quadraticCurveTo(w * 0.58, h * 0.34, w * 0.5, h * 0.28);
-      ctx.stroke();
+        // Hands & Feet
+        ctx.beginPath();
+        ctx.arc(w * 0.27, h * 0.55, 11, 0, Math.PI * 2);
+        ctx.arc(w * 0.73, h * 0.55, 11, 0, Math.PI * 2);
+        ctx.arc(w * 0.44, h * 0.76, 13, 0, Math.PI * 2);
+        ctx.arc(w * 0.56, h * 0.76, 13, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Cute Eyes & Cheeks & Mouth
-      ctx.beginPath();
-      ctx.arc(w * 0.43, h * 0.5, 6, 0, Math.PI * 2);
-      ctx.arc(w * 0.57, h * 0.5, 6, 0, Math.PI * 2);
-      ctx.fillStyle = '#1e293b';
-      ctx.fill();
+        ctx.restore();
+      },
+      stroke: (ctx, w, h) => {
+        ctx.save();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 5.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
-      // Cheeks
-      ctx.beginPath();
-      ctx.arc(w * 0.38, h * 0.56, 8, 0, Math.PI * 2);
-      ctx.arc(w * 0.62, h * 0.56, 8, 0, Math.PI * 2);
-      ctx.strokeStyle = '#f87171';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+        // Tangerine Body Outline
+        ctx.beginPath();
+        ctx.arc(w * 0.5, h * 0.52, w * 0.22, 0, Math.PI * 2);
+        ctx.stroke();
 
-      // Smile
-      ctx.beginPath();
-      ctx.arc(w * 0.5, h * 0.55, 12, 0.1, Math.PI - 0.1);
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 3;
-      ctx.stroke();
+        // Stem
+        ctx.beginPath();
+        ctx.moveTo(w * 0.5, h * 0.3);
+        ctx.lineTo(w * 0.5, h * 0.24);
+        ctx.stroke();
 
-      // Cute Hands & Feet
-      ctx.beginPath();
-      ctx.arc(w * 0.27, h * 0.55, 10, 0, Math.PI * 2); // Left hand
-      ctx.arc(w * 0.73, h * 0.55, 10, 0, Math.PI * 2); // Right hand
-      ctx.arc(w * 0.44, h * 0.76, 12, 0, Math.PI * 2); // Left foot
-      ctx.arc(w * 0.56, h * 0.76, 12, 0, Math.PI * 2); // Right foot
-      ctx.lineWidth = 4;
-      ctx.stroke();
+        // Leaf
+        ctx.beginPath();
+        ctx.moveTo(w * 0.5, h * 0.26);
+        ctx.quadraticCurveTo(w * 0.62, h * 0.22, w * 0.66, h * 0.28);
+        ctx.quadraticCurveTo(w * 0.58, h * 0.34, w * 0.5, h * 0.28);
+        ctx.stroke();
 
-      ctx.restore();
+        // Cute Big Eyes with Shine
+        ctx.beginPath();
+        ctx.arc(w * 0.43, h * 0.5, 7, 0, Math.PI * 2);
+        ctx.arc(w * 0.57, h * 0.5, 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(w * 0.42, h * 0.485, 2.2, 0, Math.PI * 2);
+        ctx.arc(w * 0.56, h * 0.485, 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        // Rosy Cheeks
+        ctx.beginPath();
+        ctx.arc(w * 0.38, h * 0.56, 8, 0, Math.PI * 2);
+        ctx.arc(w * 0.62, h * 0.56, 8, 0, Math.PI * 2);
+        ctx.strokeStyle = '#f87171';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // Cute Smile
+        ctx.beginPath();
+        ctx.arc(w * 0.5, h * 0.55, 12, 0.1, Math.PI - 0.1);
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+
+        // Hands & Feet
+        ctx.beginPath();
+        ctx.arc(w * 0.27, h * 0.55, 11, 0, Math.PI * 2);
+        ctx.arc(w * 0.73, h * 0.55, 11, 0, Math.PI * 2);
+        ctx.arc(w * 0.44, h * 0.76, 13, 0, Math.PI * 2);
+        ctx.arc(w * 0.56, h * 0.76, 13, 0, Math.PI * 2);
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        ctx.restore();
+      },
+      full: (ctx, w, h) => {
+        TEMPLATES.tangerine.fill(ctx, w, h);
+        TEMPLATES.tangerine.stroke(ctx, w, h);
+      }
     },
 
-    astronaut: (ctx, w, h) => {
-      ctx.save();
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+    astronaut: {
+      fill: (ctx, w, h) => {
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
 
-      // Helmet
-      ctx.beginPath();
-      ctx.arc(w * 0.5, h * 0.35, w * 0.14, 0, Math.PI * 2);
-      ctx.stroke();
+        // Helmet
+        ctx.beginPath();
+        ctx.arc(w * 0.5, h * 0.35, w * 0.14, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Visor
-      ctx.beginPath();
-      ctx.ellipse(w * 0.5, h * 0.35, w * 0.09, w * 0.07, 0, 0, Math.PI * 2);
-      ctx.stroke();
+        // Visor
+        ctx.beginPath();
+        ctx.ellipse(w * 0.5, h * 0.35, w * 0.09, w * 0.07, 0, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Body (Suit)
-      ctx.beginPath();
-      ctx.roundRect(w * 0.42, h * 0.48, w * 0.16, h * 0.22, 16);
-      ctx.stroke();
+        // Body Suit
+        ctx.beginPath();
+        ctx.roundRect(w * 0.42, h * 0.48, w * 0.16, h * 0.22, 16);
+        ctx.fill();
 
-      // Arms
-      ctx.beginPath();
-      ctx.moveTo(w * 0.42, h * 0.52);
-      ctx.lineTo(w * 0.32, h * 0.6);
-      ctx.arc(w * 0.3, h * 0.62, 8, 0, Math.PI * 2);
-      ctx.stroke();
+        // Arms & Gloves
+        ctx.beginPath();
+        ctx.arc(w * 0.3, h * 0.62, 10, 0, Math.PI * 2);
+        ctx.arc(w * 0.7, h * 0.62, 10, 0, Math.PI * 2);
+        ctx.fill();
 
-      ctx.beginPath();
-      ctx.moveTo(w * 0.58, h * 0.52);
-      ctx.lineTo(w * 0.68, h * 0.6);
-      ctx.arc(w * 0.7, h * 0.62, 8, 0, Math.PI * 2);
-      ctx.stroke();
+        // Boots
+        ctx.beginPath();
+        ctx.roundRect(w * 0.38, h * 0.81, 16, 10, 4);
+        ctx.roundRect(w * 0.58, h * 0.81, 16, 10, 4);
+        ctx.fill();
 
-      // Legs
-      ctx.beginPath();
-      ctx.moveTo(w * 0.45, h * 0.7);
-      ctx.lineTo(w * 0.45, h * 0.82);
-      ctx.lineTo(w * 0.4, h * 0.84);
-      ctx.stroke();
+        ctx.restore();
+      },
+      stroke: (ctx, w, h) => {
+        ctx.save();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 5.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
-      ctx.beginPath();
-      ctx.moveTo(w * 0.55, h * 0.7);
-      ctx.lineTo(w * 0.55, h * 0.82);
-      ctx.lineTo(w * 0.6, h * 0.84);
-      ctx.stroke();
+        // Helmet
+        ctx.beginPath();
+        ctx.arc(w * 0.5, h * 0.35, w * 0.14, 0, Math.PI * 2);
+        ctx.stroke();
 
-      ctx.restore();
+        // Visor
+        ctx.beginPath();
+        ctx.ellipse(w * 0.5, h * 0.35, w * 0.09, w * 0.07, 0, 0, Math.PI * 2);
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // Visor Glare/Shine
+        ctx.beginPath();
+        ctx.arc(w * 0.46, h * 0.33, 8, -Math.PI * 0.5, 0);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // Body
+        ctx.beginPath();
+        ctx.roundRect(w * 0.42, h * 0.48, w * 0.16, h * 0.22, 16);
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 5.5;
+        ctx.stroke();
+
+        // Arms
+        ctx.beginPath();
+        ctx.moveTo(w * 0.42, h * 0.52);
+        ctx.lineTo(w * 0.32, h * 0.6);
+        ctx.arc(w * 0.3, h * 0.62, 9, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(w * 0.58, h * 0.52);
+        ctx.lineTo(w * 0.68, h * 0.6);
+        ctx.arc(w * 0.7, h * 0.62, 9, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Legs
+        ctx.beginPath();
+        ctx.moveTo(w * 0.45, h * 0.7);
+        ctx.lineTo(w * 0.45, h * 0.82);
+        ctx.lineTo(w * 0.4, h * 0.84);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(w * 0.55, h * 0.7);
+        ctx.lineTo(w * 0.55, h * 0.82);
+        ctx.lineTo(w * 0.6, h * 0.84);
+        ctx.stroke();
+
+        ctx.restore();
+      },
+      full: (ctx, w, h) => {
+        TEMPLATES.astronaut.fill(ctx, w, h);
+        TEMPLATES.astronaut.stroke(ctx, w, h);
+      }
     },
 
-    turtle: (ctx, w, h) => {
-      ctx.save();
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+    turtle: {
+      fill: (ctx, w, h) => {
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
 
-      // Turtle Shell
-      ctx.beginPath();
-      ctx.ellipse(w * 0.5, h * 0.52, w * 0.18, h * 0.16, 0, 0, Math.PI * 2);
-      ctx.stroke();
+        // Turtle Shell
+        ctx.beginPath();
+        ctx.ellipse(w * 0.5, h * 0.52, w * 0.18, h * 0.16, 0, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Shell Pattern
-      ctx.beginPath();
-      ctx.moveTo(w * 0.5, h * 0.36);
-      ctx.lineTo(w * 0.5, h * 0.68);
-      ctx.moveTo(w * 0.34, h * 0.52);
-      ctx.lineTo(w * 0.66, h * 0.52);
-      ctx.lineWidth = 2;
-      ctx.stroke();
+        // Head
+        ctx.beginPath();
+        ctx.arc(w * 0.5, h * 0.3, w * 0.07, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Head
-      ctx.beginPath();
-      ctx.arc(w * 0.5, h * 0.3, w * 0.07, 0, Math.PI * 2);
-      ctx.lineWidth = 4;
-      ctx.stroke();
+        // Flippers
+        ctx.beginPath();
+        ctx.moveTo(w * 0.38, h * 0.44);
+        ctx.quadraticCurveTo(w * 0.2, h * 0.38, w * 0.24, h * 0.48);
+        ctx.quadraticCurveTo(w * 0.3, h * 0.52, w * 0.36, h * 0.5);
+        ctx.closePath();
+        ctx.fill();
 
-      // Eyes
-      ctx.beginPath();
-      ctx.arc(w * 0.47, h * 0.28, 4, 0, Math.PI * 2);
-      ctx.arc(w * 0.53, h * 0.28, 4, 0, Math.PI * 2);
-      ctx.fillStyle = '#1e293b';
-      ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(w * 0.62, h * 0.44);
+        ctx.quadraticCurveTo(w * 0.8, h * 0.38, w * 0.76, h * 0.48);
+        ctx.quadraticCurveTo(w * 0.7, h * 0.52, w * 0.64, h * 0.5);
+        ctx.closePath();
+        ctx.fill();
 
-      // Flippers
-      // Front Flippers
-      ctx.beginPath();
-      ctx.moveTo(w * 0.38, h * 0.44);
-      ctx.quadraticCurveTo(w * 0.2, h * 0.38, w * 0.24, h * 0.48);
-      ctx.quadraticCurveTo(w * 0.3, h * 0.52, w * 0.36, h * 0.5);
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(w * 0.38, h * 0.66, 13, 0, Math.PI * 2);
+        ctx.arc(w * 0.62, h * 0.66, 13, 0, Math.PI * 2);
+        ctx.fill();
 
-      ctx.beginPath();
-      ctx.moveTo(w * 0.62, h * 0.44);
-      ctx.quadraticCurveTo(w * 0.8, h * 0.38, w * 0.76, h * 0.48);
-      ctx.quadraticCurveTo(w * 0.7, h * 0.52, w * 0.64, h * 0.5);
-      ctx.stroke();
+        ctx.restore();
+      },
+      stroke: (ctx, w, h) => {
+        ctx.save();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 5.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
-      // Back Flippers
-      ctx.beginPath();
-      ctx.arc(w * 0.38, h * 0.66, 12, 0, Math.PI * 2);
-      ctx.arc(w * 0.62, h * 0.66, 12, 0, Math.PI * 2);
-      ctx.stroke();
+        // Turtle Shell Outline
+        ctx.beginPath();
+        ctx.ellipse(w * 0.5, h * 0.52, w * 0.18, h * 0.16, 0, 0, Math.PI * 2);
+        ctx.stroke();
 
-      ctx.restore();
+        // Shell Patterns
+        ctx.beginPath();
+        ctx.moveTo(w * 0.5, h * 0.36);
+        ctx.lineTo(w * 0.5, h * 0.68);
+        ctx.moveTo(w * 0.34, h * 0.52);
+        ctx.lineTo(w * 0.66, h * 0.52);
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+
+        // Head
+        ctx.beginPath();
+        ctx.arc(w * 0.5, h * 0.3, w * 0.07, 0, Math.PI * 2);
+        ctx.lineWidth = 5;
+        ctx.stroke();
+
+        // Eyes
+        ctx.beginPath();
+        ctx.arc(w * 0.47, h * 0.28, 4.5, 0, Math.PI * 2);
+        ctx.arc(w * 0.53, h * 0.28, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+
+        // Flippers
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.38, h * 0.44);
+        ctx.quadraticCurveTo(w * 0.2, h * 0.38, w * 0.24, h * 0.48);
+        ctx.quadraticCurveTo(w * 0.3, h * 0.52, w * 0.36, h * 0.5);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(w * 0.62, h * 0.44);
+        ctx.quadraticCurveTo(w * 0.8, h * 0.38, w * 0.76, h * 0.48);
+        ctx.quadraticCurveTo(w * 0.7, h * 0.52, w * 0.64, h * 0.5);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(w * 0.38, h * 0.66, 13, 0, Math.PI * 2);
+        ctx.arc(w * 0.62, h * 0.66, 13, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.restore();
+      },
+      full: (ctx, w, h) => {
+        TEMPLATES.turtle.fill(ctx, w, h);
+        TEMPLATES.turtle.stroke(ctx, w, h);
+      }
     }
   };
 
@@ -378,7 +555,7 @@
     if (currentMode !== 'template') return;
 
     if (TEMPLATES[currentTemplate]) {
-      TEMPLATES[currentTemplate](tmplCtx, templateCanvas.width, templateCanvas.height);
+      TEMPLATES[currentTemplate].full(tmplCtx, templateCanvas.width, templateCanvas.height);
     } else {
       const found = loadedTemplates.find(t => t.id === currentTemplate);
       if (found && found.imageUrl) {
@@ -387,60 +564,73 @@
     }
   }
 
+  // Dual canvas cache for custom templates: { lineArtCanvas, whiteBaseCanvas }
   const cleanTemplateCache = new WeakMap();
 
-  function getCleanTransparentCanvas(img) {
+  function getCleanCustomTemplateLayers(img) {
     if (cleanTemplateCache.has(img)) {
       return cleanTemplateCache.get(img);
     }
 
     const nw = img.naturalWidth || img.width || 800;
     const nh = img.naturalHeight || img.height || 600;
-    const offCanvas = document.createElement('canvas');
-    offCanvas.width = nw;
-    offCanvas.height = nh;
-    const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
-    offCtx.drawImage(img, 0, 0);
+
+    const lineCanvas = document.createElement('canvas');
+    lineCanvas.width = nw;
+    lineCanvas.height = nh;
+    const lCtx = lineCanvas.getContext('2d', { willReadFrequently: true });
+    lCtx.drawImage(img, 0, 0);
+
+    const baseCanvas = document.createElement('canvas');
+    baseCanvas.width = nw;
+    baseCanvas.height = nh;
+    const bCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
 
     try {
-      const imgData = offCtx.getImageData(0, 0, nw, nh);
+      const imgData = lCtx.getImageData(0, 0, nw, nh);
       const data = imgData.data;
-      let hasOpaqueWhite = false;
+      const baseData = bCtx.createImageData(nw, nh);
+      const bData = baseData.data;
 
-      // Sample corners & grid to check for solid white background
-      for (let i = 0; i < data.length; i += 16) {
-        if (data[i + 3] > 200 && data[i] > 230 && data[i + 1] > 230 && data[i + 2] > 230) {
-          hasOpaqueWhite = true;
-          break;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+
+        if (a < 20) {
+          data[i + 3] = 0;
+          continue;
+        }
+
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (lum >= 225) {
+          // White background
+          data[i + 3] = 0; // Transparent outline
+        } else {
+          // Black Line Art
+          data[i] = 0;
+          data[i + 1] = 0;
+          data[i + 2] = 0;
+          data[i + 3] = 255; // Solid high-contrast black line
+
+          // Mark body fill
+          bData[i] = 255;
+          bData[i + 1] = 255;
+          bData[i + 2] = 255;
+          bData[i + 3] = 255;
         }
       }
 
-      if (hasOpaqueWhite) {
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          const a = data[i + 3];
-          if (a < 10) continue;
-          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          if (lum >= 225) {
-            data[i + 3] = 0;
-          } else {
-            const alphaRatio = 1 - (lum / 225);
-            data[i] = 30;
-            data[i + 1] = 41;
-            data[i + 2] = 59;
-            data[i + 3] = Math.round(Math.min(255, Math.pow(alphaRatio, 0.85) * 255));
-          }
-        }
-        offCtx.putImageData(imgData, 0, 0);
-      }
+      lCtx.putImageData(imgData, 0, 0);
+      bCtx.putImageData(baseData, 0, 0);
     } catch (e) {
       console.warn('Canvas pixel processing skipped:', e);
     }
 
-    cleanTemplateCache.set(img, offCanvas);
-    return offCanvas;
+    const result = { lineCanvas, baseCanvas };
+    cleanTemplateCache.set(img, result);
+    return result;
   }
 
   function renderCustomTemplate(tmpl) {
@@ -462,12 +652,12 @@
 
   function drawCustomTemplateOnCanvas(img) {
     tmplCtx.clearRect(0, 0, templateCanvas.width, templateCanvas.height);
-    const sourceDrawable = getCleanTransparentCanvas(img);
+    const layers = getCleanCustomTemplateLayers(img);
     const w = templateCanvas.width;
     const h = templateCanvas.height;
     const pad = 60;
-    const srcW = sourceDrawable.width || 1;
-    const srcH = sourceDrawable.height || 1;
+    const srcW = layers.lineCanvas.width || 1;
+    const srcH = layers.lineCanvas.height || 1;
     const scale = Math.min((w - pad * 2) / srcW, (h - pad * 2) / srcH);
     const dw = srcW * scale;
     const dh = srcH * scale;
@@ -475,8 +665,52 @@
     const dy = (h - dh) / 2;
 
     tmplCtx.save();
-    tmplCtx.drawImage(sourceDrawable, dx, dy, dw, dh);
+    tmplCtx.drawImage(layers.lineCanvas, dx, dy, dw, dh);
     tmplCtx.restore();
+  }
+
+  function drawTemplateWhiteBase(ctx, w, h) {
+    if (TEMPLATES[currentTemplate] && TEMPLATES[currentTemplate].fill) {
+      TEMPLATES[currentTemplate].fill(ctx, w, h);
+    } else {
+      const found = loadedTemplates.find(t => t.id === currentTemplate);
+      if (found && customTemplateImages[found.id] && customTemplateImages[found.id].complete) {
+        const layers = getCleanCustomTemplateLayers(customTemplateImages[found.id]);
+        const pad = 60;
+        const srcW = layers.baseCanvas.width || 1;
+        const srcH = layers.baseCanvas.height || 1;
+        const scale = Math.min((w - pad * 2) / srcW, (h - pad * 2) / srcH);
+        const dw = srcW * scale;
+        const dh = srcH * scale;
+        const dx = (w - dw) / 2;
+        const dy = (h - dh) / 2;
+        ctx.save();
+        ctx.drawImage(layers.baseCanvas, dx, dy, dw, dh);
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawTemplateOutline(ctx, w, h) {
+    if (TEMPLATES[currentTemplate] && TEMPLATES[currentTemplate].stroke) {
+      TEMPLATES[currentTemplate].stroke(ctx, w, h);
+    } else {
+      const found = loadedTemplates.find(t => t.id === currentTemplate);
+      if (found && customTemplateImages[found.id] && customTemplateImages[found.id].complete) {
+        const layers = getCleanCustomTemplateLayers(customTemplateImages[found.id]);
+        const pad = 60;
+        const srcW = layers.lineCanvas.width || 1;
+        const srcH = layers.lineCanvas.height || 1;
+        const scale = Math.min((w - pad * 2) / srcW, (h - pad * 2) / srcH);
+        const dw = srcW * scale;
+        const dh = srcH * scale;
+        const dx = (w - dw) / 2;
+        const dy = (h - dh) / 2;
+        ctx.save();
+        ctx.drawImage(layers.lineCanvas, dx, dy, dw, dh);
+        ctx.restore();
+      }
+    }
   }
 
   function updateTemplates(templates) {
@@ -712,18 +946,25 @@
     await new Promise(r => setTimeout(r, 450)); // Simulated AI neural inference step 1
     loadingStep.textContent = '2/3 캐릭터 관절 뼈대(Skeleton) 추출 중...';
 
-    // Combine drawing and template into single offscreen canvas
+    // PRD P0-1: 3-Layer Composite Pipeline
+    // Layer 1: Solid White Base -> Layer 2: User Colors -> Layer 3: Crisp Pure Black Outline
     const offscreen = document.createElement('canvas');
     offscreen.width = drawingCanvas.width;
     offscreen.height = drawingCanvas.height;
     const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
 
-    // Draw user coloring
-    offCtx.drawImage(drawingCanvas, 0, 0);
-
-    // If template mode, also draw template lines
     if (currentMode === 'template') {
-      offCtx.drawImage(templateCanvas, 0, 0);
+      // 1. Solid White Base inside mascot body (Pure #ffffff base backing)
+      drawTemplateWhiteBase(offCtx, offscreen.width, offscreen.height);
+
+      // 2. User Coloring Strokes on top of white base (Maximum vivid pigmentation!)
+      offCtx.drawImage(drawingCanvas, 0, 0);
+
+      // 3. Crisp Pure Black Outline on top (Always visible, never obscured by drawing)
+      drawTemplateOutline(offCtx, offscreen.width, offscreen.height);
+    } else {
+      // Free Drawing Mode
+      offCtx.drawImage(drawingCanvas, 0, 0);
     }
 
     // Detect Bounding Box
@@ -1330,9 +1571,30 @@
       const dw = processedCharacter.width * scale;
       const dh = processedCharacter.height * scale;
 
-      const isSwim = (processedCharacter.motionType === 'swim');
-      const bob = isSwim ? Math.sin(t * 3.5) * 4 : Math.sin(t * 4.5) * 5;
-      const tilt = isSwim ? Math.sin(t * 2) * 0.1 : Math.sin(t * 2.5) * 0.07;
+      const motion = (processedCharacter && processedCharacter.motionType) || 'walk';
+      let bob = 0;
+      let tilt = 0;
+
+      if (motion === 'dance_full' || motion === 'dance') {
+        const beat = t * 4.5;
+        bob = -Math.abs(Math.sin(beat)) * 8;
+        tilt = Math.sin(t * 2.8) * 0.14;
+      } else if (motion === 'dance_lower') {
+        const beat = t * 5.0;
+        bob = -Math.max(0, Math.sin(beat)) * 9;
+        tilt = Math.sin(beat * 0.5) * 0.08;
+      } else if (motion === 'funny') {
+        bob = Math.sin(t * 3.0) * 8;
+        tilt = Math.sin(t * 5.0) * 0.18 + Math.sin(t * 1.5) * 0.10;
+      } else if (motion === 'swim') {
+        bob = Math.sin(t * 3.5) * 4;
+        tilt = Math.sin(t * 2) * 0.10;
+      } else {
+        // walk
+        const step = t * 4.2;
+        bob = -Math.abs(Math.sin(step)) * 5;
+        tilt = Math.sin(t * 2.1) * 0.06;
+      }
 
       miniCtx.save();
       miniCtx.translate(cx, cy + bob);
@@ -1383,10 +1645,59 @@
       const cx = previewCanvas.width / 2;
       const cy = previewCanvas.height / 2;
 
-      const isSwim = (processedCharacter.motionType === 'swim');
-      const bobSpeed = isSwim ? 3.5 : 4.5;
-      const bob = Math.sin(t * bobSpeed) * 7;
-      const tilt = isSwim ? Math.sin(t * 2.2) * 0.12 : Math.sin(t * 2.2) * 0.08;
+      const motion = (processedCharacter && processedCharacter.motionType) || 'walk';
+      let bob = 0;
+      let tilt = 0;
+      let armSwing = 0;
+      let legSwing = 0;
+      let squishY = 1;
+      let squishX = 1;
+
+      if (motion === 'dance_full' || motion === 'dance') {
+        // 1. 전신 댄스: 리드미컬 상하좌우 그루브, 비트 탄성 바운스
+        const beat = t * 4.5;
+        bob = -Math.abs(Math.sin(beat)) * 14;
+        tilt = Math.sin(t * 2.8) * 0.16;
+        squishY = 1 + Math.sin(beat) * 0.08;
+        squishX = 1 - Math.sin(beat) * 0.06;
+        armSwing = Math.sin(beat) * 16;
+        legSwing = Math.cos(beat * 0.5) * 14;
+      } else if (motion === 'dance_lower') {
+        // 2. 하체 댄스: 통통 튀는 스쿼트 앤 팝, 빠른 셔플 킥
+        const beat = t * 5.0;
+        const bounce = Math.max(0, Math.sin(beat));
+        bob = -bounce * 15;
+        tilt = Math.sin(beat * 0.5) * 0.10;
+        squishY = 1 - bounce * 0.12;
+        squishX = 1 + bounce * 0.10;
+        armSwing = Math.sin(beat * 0.5) * 6;
+        legSwing = Math.sin(beat) * 20;
+      } else if (motion === 'funny') {
+        // 3. 웃긴: 젤리 같은 비선형 왜곡, 뒤뚱거리는 코믹 바운스
+        bob = Math.sin(t * 3.0) * 12;
+        tilt = Math.sin(t * 5.0) * 0.22 + Math.sin(t * 1.5) * 0.14;
+        squishY = 1 + Math.sin(t * 6.0) * 0.16;
+        squishX = 1 - Math.sin(t * 6.0) * 0.14;
+        armSwing = Math.sin(t * 7.0) * 18;
+        legSwing = -Math.sin(t * 6.0) * 16;
+      } else if (motion === 'swim') {
+        bob = Math.sin(t * 3.5) * 7;
+        tilt = Math.sin(t * 2.2) * 0.12;
+        squishY = 1 + Math.sin(t * 3.5) * 0.04;
+        squishX = 1 - Math.sin(t * 3.5) * 0.03;
+        armSwing = Math.sin(t * 2.5) * 10;
+        legSwing = Math.cos(t * 2.5) * 10;
+      } else {
+        // 4. 워킹 (walk, default)
+        const step = t * 4.2;
+        bob = -Math.abs(Math.sin(step)) * 7;
+        tilt = Math.sin(t * 2.1) * 0.07;
+        squishY = 1 + Math.sin(step) * 0.035;
+        squishX = 1 - Math.sin(step) * 0.025;
+        armSwing = Math.sin(step) * 10;
+        legSwing = Math.cos(step) * 12;
+      }
+
       const scale = 160 / Math.max(processedCharacter.width, processedCharacter.height);
       const dw = processedCharacter.width * scale;
       const dh = processedCharacter.height * scale;
@@ -1397,17 +1708,19 @@
 
       // Draw character image
       if (processedCharacter.charImg && processedCharacter.charImg.complete) {
-        prevCtx.drawImage(processedCharacter.charImg, -dw / 2, -dh / 2, dw, dh);
+        prevCtx.drawImage(
+          processedCharacter.charImg,
+          (-dw / 2) * squishX,
+          (-dh / 2) * squishY,
+          dw * squishX,
+          dh * squishY
+        );
       }
 
       // Draw Live Articulated Custom Skeleton Overlay
       const skel = processedCharacter.skeleton;
-      const sx = (val) => (val - processedCharacter.width / 2) * scale;
-      const sy = (val) => (val - processedCharacter.height / 2) * scale;
-
-      // Harmonic articulation swing angles based on adjusted limb anchors
-      const armSwing = Math.sin(t * bobSpeed) * 8;
-      const legSwing = Math.cos(t * bobSpeed) * 10;
+      const sx = (val) => (val - processedCharacter.width / 2) * scale * squishX;
+      const sy = (val) => (val - processedCharacter.height / 2) * scale * squishY;
 
       BONE_LINKS.forEach(bone => {
         const p1 = skel[bone.from];
@@ -1463,6 +1776,43 @@
   }
 
   // ----------------------------------------------------
+  // Motion Option Controls (PRD P0-1: 4 Motion Options)
+  // ----------------------------------------------------
+  const motionOptionButtons = document.querySelectorAll('.btn-motion-opt');
+  const MOTION_LABELS = {
+    dance_full: '💃 전신 댄스 (Full Body Dance)',
+    walk: '🚶 워킹 (Harmonic Walk)',
+    dance_lower: '🕺 하체 댄스 (Lower Body Dance)',
+    funny: '🤪 웃긴 동작 (Comic Funny)',
+    swim: '🌊 해양 유영 (Harmonic Swim)'
+  };
+
+  motionOptionButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const selectedMotion = btn.dataset.motion;
+      motionOptionButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      if (processedCharacter) {
+        processedCharacter.motionType = selectedMotion;
+      }
+      motionTypeLabel.textContent = MOTION_LABELS[selectedMotion] || MOTION_LABELS.walk;
+    });
+  });
+
+  function syncMotionButtons(motion) {
+    const target = motion || 'walk';
+    motionOptionButtons.forEach(btn => {
+      if (btn.dataset.motion === target) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+    motionTypeLabel.textContent = MOTION_LABELS[target] || MOTION_LABELS.walk;
+  }
+
+  // ----------------------------------------------------
   // Modal Navigation & State Transitions
   // ----------------------------------------------------
   function switchModalTab(tab) {
@@ -1490,7 +1840,7 @@
         cancelAnimationFrame(miniAnimId);
         miniAnimId = null;
       }
-      motionTypeLabel.textContent = processedCharacter.motionType === 'swim' ? '자율 루프 유영 (Harmonic Swim)' : '자율 루프 보행 (Harmonic Walk)';
+      syncMotionButtons(processedCharacter ? processedCharacter.motionType : 'walk');
       keypointCount.textContent = '13 Keypoints (수동 보정 반영 완료)';
       startPreviewAnimation();
     }

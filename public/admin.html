@@ -156,7 +156,10 @@
               <div class="form-group">
                 <label for="select-template-motion">기본 모션 타입:</label>
                 <select id="select-template-motion" class="admin-select">
-                  <option value="walk">🚶 지면 보행 (Walk)</option>
+                  <option value="dance_full">💃 전신 댄스 (Full Body Dance)</option>
+                  <option value="walk" selected>🚶 지면 보행 (Walk)</option>
+                  <option value="dance_lower">🕺 하체 댄스 (Lower Body Dance)</option>
+                  <option value="funny">🤪 웃긴 (Comic Funny)</option>
                   <option value="swim">🌊 해양 유영 (Swim)</option>
                   <option value="space">✨ 무중력 부유 (Float)</option>
                 </select>
@@ -185,18 +188,19 @@
       <section class="admin-card">
         <div class="card-header">
           <h2>🦴 Animated Drawings 파일 업로드 & 즉시 송출</h2>
-          <span class="card-sub">Meta Animated Drawings 프로젝트 파일(PNG + YAML/JSON 또는 .ZIP)을 업로드하여 미디어월에 즉시 송출합니다.</span>
+          <span class="card-sub">Meta Animated Drawings 프로젝트 파일(PNG + YAML/JSON, .ZIP 또는 .MP4 동영상)을 업로드하여 미디어월에 즉시 송출합니다.</span>
         </div>
 
         <div class="ad-import-layout">
           <!-- File Drop Zone -->
           <div class="ad-dropzone" id="ad-dropzone">
-            <input type="file" id="ad-file-input" multiple accept=".png,.jpg,.jpeg,.yaml,.yml,.json,.zip" style="display: none;">
+            <input type="file" id="ad-file-input" multiple accept=".mp4,.webm,.png,.jpg,.jpeg,.yaml,.yml,.json,.zip,video/mp4,video/webm" style="display: none;">
             <div class="ad-dropzone-content" id="ad-dropzone-prompt">
               <span class="ad-dropzone-icon">📦</span>
               <span class="ad-dropzone-title">Animated Drawings 파일들을 드롭하거나 클릭하세요</span>
-              <span class="ad-dropzone-desc">texture.png + char_cfg.yaml (또는 .zip 압축 패키지, .json 관절 파일)</span>
+              <span class="ad-dropzone-desc">Meta Animated Drawings MP4 영상, texture.png + char_cfg.yaml, .zip 패키지</span>
               <div class="supported-badges">
+                <span class="file-badge video-badge">.MP4</span>
                 <span class="file-badge">.PNG</span>
                 <span class="file-badge">.YAML</span>
                 <span class="file-badge">.JSON</span>
@@ -232,7 +236,10 @@
               <div class="form-group inline-group">
                 <label for="ad-motion-select">미디어월 동작 타입:</label>
                 <select id="ad-motion-select" class="admin-select">
-                  <option value="walk">🚶 자율 루프 보행 (Harmonic Walk)</option>
+                  <option value="dance_full">💃 전신 댄스 (Full Body Dance)</option>
+                  <option value="walk" selected>🚶 워킹 (Harmonic Walk)</option>
+                  <option value="dance_lower">🕺 하체 댄스 (Lower Body Dance)</option>
+                  <option value="funny">🤪 웃긴 (Comic Funny)</option>
                   <option value="swim">🌊 해양 자율 유영 (Harmonic Swim)</option>
                   <option value="space">🪐 무중력 유영 (Zero-Gravity Drift)</option>
                 </select>
