@@ -431,40 +431,28 @@
         return anchors[anchors.length - 1][prop];
       }
 
-      // 2. 고품질 미세 슬라이스 연속 렌더링 (그림 절단 0% 보장)
-      const N = this.sliceCount;
-      const sliceH = H / N;
-      const overlapPadding = 0.85; // 0.85px 오버랩으로 틈새 크랙 완전 밀폐
+      // 2. 단 1픽셀도 잘리지 않는 완전무결 원본 렌더링 (Zero-Clipping Intact Rendering)
+      // 골반 힙 바운스, 척추/머리 카운터 틸트, 지면 착지 완충 스쿼시 & 스트레치 적용
+      const centerX = destX + destW * 0.5 + dxPelvis * scaleX;
+      const centerY = destY + destH * 0.5 + dyPelvis * scaleY;
+
+      // 점프/스쿼트 및 보행 주기에 따른 탄성 신축 (Squash & Stretch)
+      const squashFactor = clamp(1.0 - (dyFoot - dyPelvis) * 0.003, 0.85, 1.15);
+      const stretchFactor = 1.0 / Math.sqrt(squashFactor);
 
       ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(spineTilt);
+      ctx.scale(stretchFactor, squashFactor);
 
-      for (let i = 0; i < N; i++) {
-        const sy = (i / N) * H;
-        const sh = Math.min(sliceH + overlapPadding, H - sy);
-        const u = (sy + sliceH * 0.5) / H;
-
-        const curDx = interpolateProperty('dx', u);
-        const curDy = interpolateProperty('dy', u);
-        const curRot = interpolateProperty('rot', u);
-        const curScaleX = interpolateProperty('sx', u);
-
-        // 월드 슬라이스 위치
-        const sliceWorldX = destX + (W * 0.5 + curDx) * scaleX;
-        const sliceWorldY = destY + (sy + curDy) * scaleY;
-
-        ctx.save();
-        ctx.translate(sliceWorldX, sliceWorldY);
-        ctx.rotate(curRot);
-
-        ctx.drawImage(
-          this.image,
-          0, sy, W, sh,
-          (-destW * 0.5) * curScaleX, 0,
-          destW * curScaleX, sh * scaleY
-        );
-
-        ctx.restore();
-      }
+      // 온전한 원본 이미지 100% 무손실 렌더링 (조각남/잘림 0%)
+      ctx.drawImage(
+        this.image,
+        -destW * 0.5,
+        -destH * 0.5,
+        destW,
+        destH
+      );
 
       ctx.restore();
     }
