@@ -266,6 +266,41 @@
           this.imageLoaded = true;
           this.width = 160 * (data.scale || 1.0);
           this.height = (nh / nw) * this.width;
+
+          // Auto-generate skeleton if not provided
+          if (!this.skeleton) {
+            this.skeleton = {
+              head: { x: nw * 0.50, y: nh * 0.16 },
+              neck: { x: nw * 0.50, y: nh * 0.34 },
+              shoulder_l: { x: nw * 0.30, y: nh * 0.46 },
+              elbow_l: { x: nw * 0.20, y: nh * 0.54 },
+              hand_l: { x: nw * 0.10, y: nh * 0.60 },
+              shoulder_r: { x: nw * 0.70, y: nh * 0.46 },
+              elbow_r: { x: nw * 0.80, y: nh * 0.54 },
+              hand_r: { x: nw * 0.90, y: nh * 0.60 },
+              pelvis: { x: nw * 0.50, y: nh * 0.68 },
+              knee_l: { x: nw * 0.40, y: nh * 0.84 },
+              foot_l: { x: nw * 0.36, y: nh * 0.96 },
+              knee_r: { x: nw * 0.60, y: nh * 0.84 },
+              foot_r: { x: nw * 0.64, y: nh * 0.96 }
+            };
+          }
+
+          // Initialize high-performance 2D SkinnedMesh deformer
+          if (window.SkeletalMeshEngine && (this.drawable || this.image)) {
+            try {
+              this.skinnedMesh = new window.SkeletalMeshEngine.SkinnedMesh(
+                this.drawable || this.image,
+                this.skeleton,
+                nw,
+                nh,
+                8, 10
+              );
+            } catch (err) {
+              console.warn('MediaWall SkinnedMesh init error:', err);
+              this.skinnedMesh = null;
+            }
+          }
         };
         this.image.src = data.dataUrl;
       }
@@ -288,6 +323,7 @@
       }
       this.drawable = null;
       this.image = null;
+      this.skinnedMesh = null;
     }
 
     update(dt) {
@@ -339,8 +375,13 @@
         // 무중력 유영
         this.x += this.vx * dt * 0.7;
         this.y = this.baseY + Math.cos(this.phase * 0.7) * 45;
+      } else if (this.motionType === 'jump') {
+        // 4. 점프: 통통 튀어오르는 탄성 점프와 전진
+        this.x += this.vx * dt * 0.75;
+        const jumpPhase = (this.phase * 0.85) % Math.PI;
+        this.y = ground - Math.sin(jumpPhase) * 60;
       } else {
-        // 4. 워킹 (walk, default): 안정적인 보행 주기
+        // 5. 워킹 (walk, default): 안정적인 보행 주기
         this.x += this.vx * dt;
         this.y = ground - Math.abs(Math.sin(this.phase * 1.5)) * 24;
       }
@@ -445,8 +486,46 @@
             this.height * squishY
           );
         }
+      } else if (this.skinnedMesh && window.SkeletalMeshEngine) {
+        // High-Performance Skinned Mesh Deformation (FK & 2-Bone IK)
+        // 1. 관절 키네마틱스 연산 (FK 어깨/팔꿈치 전파, 2-Bone IK 지면 접지)
+        const solvedPose = window.SkeletalMeshEngine.solveSkeletonPose(
+          this.skeleton,
+          this.motionType,
+          this.age,
+          this.facing
+        );
+
+        // 2. 2D 아핀 삼각 메시 스키닝 디포메이션 (관절별 독립 회전 및 유기적 피부 휘어짐)
+        this.skinnedMesh.draw(
+          ctx,
+          solvedPose,
+          -this.width / 2,
+          -this.height / 2,
+          this.width,
+          this.height
+        );
+
+        // 3. 소환 초기 (첫 2.5초) 관절 리깅 하이라이트 네온 이펙트
+        if (this.age < 2.5) {
+          const glowAlpha = Math.max(0, (2.5 - this.age) / 2.5) * 0.85;
+          const nw = (this.image && this.image.naturalWidth) || this.width;
+          const nh = (this.image && this.image.naturalHeight) || this.height;
+          const scaleX = this.width / nw;
+          const scaleY = this.height / nh;
+
+          window.SkeletalMeshEngine.drawSkeletonOverlay(
+            ctx,
+            solvedPose,
+            -this.width / 2,
+            -this.height / 2,
+            scaleX,
+            scaleY,
+            { alpha: this.opacity * glowAlpha, lineWidth: 2.2 }
+          );
+        }
       } else {
-        // High-definition Drawing Image
+        // Fallback: Static drawing image with global affine squash/stretch
         ctx.drawImage(
           this.drawable || this.image,
           (-this.width / 2) * squishX,
@@ -454,56 +533,52 @@
           this.width * squishX,
           this.height * squishY
         );
-      }
 
-      // Subtle skeletal glow during entrance (first 2.5 seconds) to highlight custom rigging
-      if (this.age < 2.5 && this.skeleton) {
-        const glowAlpha = Math.max(0, (2.5 - this.age) / 2.5) * 0.6;
-        const scaleX = this.width / ((this.image && this.image.naturalWidth) || this.width);
-        const scaleY = this.height / ((this.image && this.image.naturalHeight) || this.height);
+        // Basic skeleton overlay fallback
+        if (this.age < 2.5 && this.skeleton) {
+          const glowAlpha = Math.max(0, (2.5 - this.age) / 2.5) * 0.6;
+          const scaleX = this.width / ((this.image && this.image.naturalWidth) || this.width);
+          const scaleY = this.height / ((this.image && this.image.naturalHeight) || this.height);
 
-        ctx.save();
-        ctx.globalAlpha = this.opacity * glowAlpha;
-        ctx.translate(-this.width / 2, -this.height / 2 + bob);
+          ctx.save();
+          ctx.globalAlpha = this.opacity * glowAlpha;
+          ctx.translate(-this.width / 2, -this.height / 2 + bob);
 
-        const skel = this.skeleton;
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
+          const skel = this.skeleton;
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+          ctx.lineWidth = 2;
+          ctx.lineCap = 'round';
 
-        // Connect spine
-        if (skel.head && skel.pelvis) {
-          ctx.beginPath();
-          ctx.moveTo(skel.head.x * scaleX, skel.head.y * scaleY);
-          ctx.lineTo(skel.pelvis.x * scaleX, skel.pelvis.y * scaleY);
-          ctx.stroke();
+          if (skel.head && skel.pelvis) {
+            ctx.beginPath();
+            ctx.moveTo(skel.head.x * scaleX, skel.head.y * scaleY);
+            ctx.lineTo(skel.pelvis.x * scaleX, skel.pelvis.y * scaleY);
+            ctx.stroke();
+          }
+          if (skel.hand_l && skel.shoulder_l && skel.shoulder_r && skel.hand_r) {
+            ctx.beginPath();
+            ctx.moveTo(skel.hand_l.x * scaleX, skel.hand_l.y * scaleY);
+            ctx.lineTo(skel.shoulder_l.x * scaleX, skel.shoulder_l.y * scaleY);
+            ctx.lineTo(skel.shoulder_r.x * scaleX, skel.shoulder_r.y * scaleY);
+            ctx.lineTo(skel.hand_r.x * scaleX, skel.hand_r.y * scaleY);
+            ctx.stroke();
+          }
+          if (skel.foot_l && skel.pelvis && skel.foot_r) {
+            ctx.beginPath();
+            ctx.moveTo(skel.foot_l.x * scaleX, skel.foot_l.y * scaleY);
+            ctx.lineTo(skel.pelvis.x * scaleX, skel.pelvis.y * scaleY);
+            ctx.lineTo(skel.foot_r.x * scaleX, skel.foot_r.y * scaleY);
+            ctx.stroke();
+          }
+
+          ctx.fillStyle = '#38bdf8';
+          for (const k in skel) {
+            ctx.beginPath();
+            ctx.arc(skel[k].x * scaleX, skel[k].y * scaleY, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
         }
-        // Connect arms
-        if (skel.hand_l && skel.shoulder_l && skel.shoulder_r && skel.hand_r) {
-          ctx.beginPath();
-          ctx.moveTo(skel.hand_l.x * scaleX, skel.hand_l.y * scaleY);
-          ctx.lineTo(skel.shoulder_l.x * scaleX, skel.shoulder_l.y * scaleY);
-          ctx.lineTo(skel.shoulder_r.x * scaleX, skel.shoulder_r.y * scaleY);
-          ctx.lineTo(skel.hand_r.x * scaleX, skel.hand_r.y * scaleY);
-          ctx.stroke();
-        }
-        // Connect legs
-        if (skel.foot_l && skel.pelvis && skel.foot_r) {
-          ctx.beginPath();
-          ctx.moveTo(skel.foot_l.x * scaleX, skel.foot_l.y * scaleY);
-          ctx.lineTo(skel.pelvis.x * scaleX, skel.pelvis.y * scaleY);
-          ctx.lineTo(skel.foot_r.x * scaleX, skel.foot_r.y * scaleY);
-          ctx.stroke();
-        }
-
-        // Joints
-        ctx.fillStyle = '#38bdf8';
-        for (const k in skel) {
-          ctx.beginPath();
-          ctx.arc(skel[k].x * scaleX, skel[k].y * scaleY, 2.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.restore();
       }
 
       ctx.restore();

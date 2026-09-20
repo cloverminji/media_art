@@ -1479,6 +1479,8 @@
         riggingCanvas.releasePointerCapture(e.pointerId);
       } catch (err) {}
       draggedJoint = null;
+      miniSkinnedMesh = null;
+      prevSkinnedMesh = null;
       riggingJointTooltip.textContent = '관절 위치가 업데이트되었습니다!';
       setTimeout(() => {
         if (!draggedJoint && !hoveredJoint) {
@@ -1499,6 +1501,8 @@
   btnRigReset.addEventListener('click', () => {
     if (!initialSkeleton || !processedCharacter) return;
     processedCharacter.skeleton = JSON.parse(JSON.stringify(initialSkeleton));
+    miniSkinnedMesh = null;
+    prevSkinnedMesh = null;
     renderRiggingCanvas();
     riggingJointTooltip.textContent = '🔄 AI 자동 매핑 초기 위치로 복원되었습니다';
     riggingJointTooltip.classList.add('active');
@@ -1527,6 +1531,8 @@
     skel.foot_r.x = spineX + (spineX - skel.foot_l.x);
     skel.foot_r.y = skel.foot_l.y;
 
+    miniSkinnedMesh = null;
+    prevSkinnedMesh = null;
     renderRiggingCanvas();
     riggingJointTooltip.textContent = '✨ 척추 기준으로 좌우 대칭이 정렬되었습니다';
     riggingJointTooltip.classList.add('active');
@@ -1542,6 +1548,8 @@
       const newSkel = generateSkeleton(preset, processedCharacter.width, processedCharacter.height);
       processedCharacter.skeleton = newSkel;
       processedCharacter.motionType = (preset === 'dolphin' || preset === 'turtle') ? 'swim' : 'walk';
+      miniSkinnedMesh = null;
+      prevSkinnedMesh = null;
 
       // Update info labels
       motionTypeLabel.textContent = processedCharacter.motionType === 'swim' ? '자율 루프 유영 (Harmonic Swim)' : '자율 루프 보행 (Harmonic Walk)';
@@ -1555,9 +1563,23 @@
   // ----------------------------------------------------
   // Live Mini Motion Preview (In-Editor Real-Time Feedback)
   // ----------------------------------------------------
+  let miniSkinnedMesh = null;
+  let prevSkinnedMesh = null;
+
   function startMiniPreviewAnimation() {
     if (!processedCharacter || !miniCtx) return;
     let startTime = performance.now();
+
+    // Create or reuse SkinnedMesh instance
+    if (window.SkeletalMeshEngine && processedCharacter.charImg && processedCharacter.charImg.complete) {
+      miniSkinnedMesh = new window.SkeletalMeshEngine.SkinnedMesh(
+        processedCharacter.charImg,
+        processedCharacter.skeleton,
+        processedCharacter.width,
+        processedCharacter.height,
+        6, 8
+      );
+    }
 
     function miniLoop(now) {
       if (activeModalTab !== 'rigging') return;
@@ -1567,62 +1589,43 @@
 
       const cx = riggingMiniCanvas.width / 2;
       const cy = riggingMiniCanvas.height / 2;
-      const scale = 80 / Math.max(processedCharacter.width, processedCharacter.height);
+      const scale = 75 / Math.max(processedCharacter.width, processedCharacter.height);
       const dw = processedCharacter.width * scale;
       const dh = processedCharacter.height * scale;
-
       const motion = (processedCharacter && processedCharacter.motionType) || 'walk';
-      let bob = 0;
-      let tilt = 0;
-
-      if (motion === 'dance_full' || motion === 'dance') {
-        const beat = t * 4.5;
-        bob = -Math.abs(Math.sin(beat)) * 8;
-        tilt = Math.sin(t * 2.8) * 0.14;
-      } else if (motion === 'dance_lower') {
-        const beat = t * 5.0;
-        bob = -Math.max(0, Math.sin(beat)) * 9;
-        tilt = Math.sin(beat * 0.5) * 0.08;
-      } else if (motion === 'funny') {
-        bob = Math.sin(t * 3.0) * 8;
-        tilt = Math.sin(t * 5.0) * 0.18 + Math.sin(t * 1.5) * 0.10;
-      } else if (motion === 'swim') {
-        bob = Math.sin(t * 3.5) * 4;
-        tilt = Math.sin(t * 2) * 0.10;
-      } else {
-        // walk
-        const step = t * 4.2;
-        bob = -Math.abs(Math.sin(step)) * 5;
-        tilt = Math.sin(t * 2.1) * 0.06;
-      }
 
       miniCtx.save();
-      miniCtx.translate(cx, cy + bob);
-      miniCtx.rotate(tilt);
+      miniCtx.translate(cx, cy);
 
-      // Draw character
-      if (processedCharacter.charImg && processedCharacter.charImg.complete) {
-        miniCtx.drawImage(processedCharacter.charImg, -dw / 2, -dh / 2, dw, dh);
+      if (window.SkeletalMeshEngine && miniSkinnedMesh) {
+        // FK & IK Pose solver
+        const solvedPose = window.SkeletalMeshEngine.solveSkeletonPose(
+          processedCharacter.skeleton,
+          motion,
+          t
+        );
+
+        // Skinned Mesh Deformation
+        miniSkinnedMesh.draw(miniCtx, solvedPose, -dw / 2, -dh / 2, dw, dh);
+
+        // Live Joint lines
+        window.SkeletalMeshEngine.drawSkeletonOverlay(
+          miniCtx,
+          solvedPose,
+          -dw / 2,
+          -dh / 2,
+          scale,
+          scale,
+          { alpha: 0.85, lineWidth: 1.5 }
+        );
+      } else {
+        // Fallback static image
+        if (processedCharacter.charImg && processedCharacter.charImg.complete) {
+          miniCtx.drawImage(processedCharacter.charImg, -dw / 2, -dh / 2, dw, dh);
+        }
       }
 
-      // Draw active custom skeleton bones
-      const skel = processedCharacter.skeleton;
-      const sx = (val) => (val - processedCharacter.width / 2) * scale;
-      const sy = (val) => (val - processedCharacter.height / 2) * scale;
-
-      miniCtx.strokeStyle = '#38bdf8';
-      miniCtx.lineWidth = 1.8;
-      miniCtx.beginPath();
-      miniCtx.moveTo(sx(skel.head.x), sy(skel.head.y));
-      miniCtx.lineTo(sx(skel.pelvis.x), sy(skel.pelvis.y));
-      miniCtx.moveTo(sx(skel.hand_l.x), sy(skel.hand_l.y));
-      miniCtx.lineTo(sx(skel.hand_r.x), sy(skel.hand_r.y));
-      miniCtx.moveTo(sx(skel.foot_l.x), sy(skel.foot_l.y));
-      miniCtx.lineTo(sx(skel.foot_r.x), sy(skel.foot_r.y));
-      miniCtx.stroke();
-
       miniCtx.restore();
-
       miniAnimId = requestAnimationFrame(miniLoop);
     }
 
@@ -1636,6 +1639,17 @@
     if (!processedCharacter || !prevCtx) return;
     let startTime = performance.now();
 
+    // Create or update SkinnedMesh
+    if (window.SkeletalMeshEngine && processedCharacter.charImg && processedCharacter.charImg.complete) {
+      prevSkinnedMesh = new window.SkeletalMeshEngine.SkinnedMesh(
+        processedCharacter.charImg,
+        processedCharacter.skeleton,
+        processedCharacter.width,
+        processedCharacter.height,
+        8, 10
+      );
+    }
+
     function loop(now) {
       if (activeModalTab !== 'preview') return;
 
@@ -1644,131 +1658,56 @@
 
       const cx = previewCanvas.width / 2;
       const cy = previewCanvas.height / 2;
-
       const motion = (processedCharacter && processedCharacter.motionType) || 'walk';
-      let bob = 0;
-      let tilt = 0;
-      let armSwing = 0;
-      let legSwing = 0;
-      let squishY = 1;
-      let squishX = 1;
-
-      if (motion === 'dance_full' || motion === 'dance') {
-        // 1. 전신 댄스: 리드미컬 상하좌우 그루브, 비트 탄성 바운스
-        const beat = t * 4.5;
-        bob = -Math.abs(Math.sin(beat)) * 14;
-        tilt = Math.sin(t * 2.8) * 0.16;
-        squishY = 1 + Math.sin(beat) * 0.08;
-        squishX = 1 - Math.sin(beat) * 0.06;
-        armSwing = Math.sin(beat) * 16;
-        legSwing = Math.cos(beat * 0.5) * 14;
-      } else if (motion === 'dance_lower') {
-        // 2. 하체 댄스: 통통 튀는 스쿼트 앤 팝, 빠른 셔플 킥
-        const beat = t * 5.0;
-        const bounce = Math.max(0, Math.sin(beat));
-        bob = -bounce * 15;
-        tilt = Math.sin(beat * 0.5) * 0.10;
-        squishY = 1 - bounce * 0.12;
-        squishX = 1 + bounce * 0.10;
-        armSwing = Math.sin(beat * 0.5) * 6;
-        legSwing = Math.sin(beat) * 20;
-      } else if (motion === 'funny') {
-        // 3. 웃긴: 젤리 같은 비선형 왜곡, 뒤뚱거리는 코믹 바운스
-        bob = Math.sin(t * 3.0) * 12;
-        tilt = Math.sin(t * 5.0) * 0.22 + Math.sin(t * 1.5) * 0.14;
-        squishY = 1 + Math.sin(t * 6.0) * 0.16;
-        squishX = 1 - Math.sin(t * 6.0) * 0.14;
-        armSwing = Math.sin(t * 7.0) * 18;
-        legSwing = -Math.sin(t * 6.0) * 16;
-      } else if (motion === 'swim') {
-        bob = Math.sin(t * 3.5) * 7;
-        tilt = Math.sin(t * 2.2) * 0.12;
-        squishY = 1 + Math.sin(t * 3.5) * 0.04;
-        squishX = 1 - Math.sin(t * 3.5) * 0.03;
-        armSwing = Math.sin(t * 2.5) * 10;
-        legSwing = Math.cos(t * 2.5) * 10;
-      } else {
-        // 4. 워킹 (walk, default)
-        const step = t * 4.2;
-        bob = -Math.abs(Math.sin(step)) * 7;
-        tilt = Math.sin(t * 2.1) * 0.07;
-        squishY = 1 + Math.sin(step) * 0.035;
-        squishX = 1 - Math.sin(step) * 0.025;
-        armSwing = Math.sin(step) * 10;
-        legSwing = Math.cos(step) * 12;
-      }
 
       const scale = 160 / Math.max(processedCharacter.width, processedCharacter.height);
       const dw = processedCharacter.width * scale;
       const dh = processedCharacter.height * scale;
 
       prevCtx.save();
-      prevCtx.translate(cx, cy + bob);
-      prevCtx.rotate(tilt);
+      prevCtx.translate(cx, cy);
 
-      // Draw character image
-      if (processedCharacter.charImg && processedCharacter.charImg.complete) {
-        prevCtx.drawImage(
-          processedCharacter.charImg,
-          (-dw / 2) * squishX,
-          (-dh / 2) * squishY,
-          dw * squishX,
-          dh * squishY
+      // Subtle contact shadow
+      prevCtx.save();
+      prevCtx.scale(1, 0.28);
+      const shadowGrad = prevCtx.createRadialGradient(0, dh * 1.6, 4, 0, dh * 1.6, dw * 0.45);
+      shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.4)');
+      shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      prevCtx.fillStyle = shadowGrad;
+      prevCtx.beginPath();
+      prevCtx.arc(0, dh * 1.6, dw * 0.45, 0, Math.PI * 2);
+      prevCtx.fill();
+      prevCtx.restore();
+
+      if (window.SkeletalMeshEngine && prevSkinnedMesh) {
+        // 1. Solve Hierarchical FK & 2-Bone IK Pose
+        const solvedPose = window.SkeletalMeshEngine.solveSkeletonPose(
+          processedCharacter.skeleton,
+          motion,
+          t
         );
-      }
 
-      // Draw Live Articulated Custom Skeleton Overlay
-      const skel = processedCharacter.skeleton;
-      const sx = (val) => (val - processedCharacter.width / 2) * scale * squishX;
-      const sy = (val) => (val - processedCharacter.height / 2) * scale * squishY;
+        // 2. Render Real-Time Skinned Mesh Deformation
+        prevSkinnedMesh.draw(prevCtx, solvedPose, -dw / 2, -dh / 2, dw, dh);
 
-      BONE_LINKS.forEach(bone => {
-        const p1 = skel[bone.from];
-        const p2 = skel[bone.to];
-        if (!p1 || !p2) return;
-
-        let x1 = sx(p1.x), y1 = sy(p1.y);
-        let x2 = sx(p2.x), y2 = sy(p2.y);
-
-        // Dynamic swing on hands/feet
-        if (bone.to === 'hand_l' || bone.to === 'hand_r') {
-          x2 += (bone.to === 'hand_l' ? armSwing : -armSwing);
+        // 3. Render Live Skeleton Overlay (Hierarchical Bone Links & Joints)
+        window.SkeletalMeshEngine.drawSkeletonOverlay(
+          prevCtx,
+          solvedPose,
+          -dw / 2,
+          -dh / 2,
+          scale,
+          scale,
+          { alpha: 0.9, lineWidth: 2.5 }
+        );
+      } else {
+        // Fallback rendering
+        if (processedCharacter.charImg && processedCharacter.charImg.complete) {
+          prevCtx.drawImage(processedCharacter.charImg, -dw / 2, -dh / 2, dw, dh);
         }
-        if (bone.to === 'foot_l' || bone.to === 'foot_r') {
-          x2 += (bone.to === 'foot_l' ? legSwing : -legSwing);
-        }
-
-        prevCtx.strokeStyle = bone.color;
-        prevCtx.lineWidth = 2.5;
-        prevCtx.lineCap = 'round';
-        prevCtx.beginPath();
-        prevCtx.moveTo(x1, y1);
-        prevCtx.lineTo(x2, y2);
-        prevCtx.stroke();
-      });
-
-      // Joint Node Dots with subtle harmonic pulsation
-      for (const k in skel) {
-        const def = JOINT_DEFS[k] || { color: '#10b981' };
-        let jx = sx(skel[k].x);
-        let jy = sy(skel[k].y);
-
-        if (k === 'hand_l') jx += armSwing;
-        if (k === 'hand_r') jx -= armSwing;
-        if (k === 'foot_l') jx += legSwing;
-        if (k === 'foot_r') jx -= legSwing;
-
-        prevCtx.beginPath();
-        prevCtx.arc(jx, jy, 4.5, 0, Math.PI * 2);
-        prevCtx.fillStyle = def.color;
-        prevCtx.fill();
-        prevCtx.lineWidth = 1.5;
-        prevCtx.strokeStyle = '#ffffff';
-        prevCtx.stroke();
       }
 
       prevCtx.restore();
-
       previewAnimId = requestAnimationFrame(loop);
     }
 
@@ -1784,6 +1723,7 @@
     walk: '🚶 워킹 (Harmonic Walk)',
     dance_lower: '🕺 하체 댄스 (Lower Body Dance)',
     funny: '🤪 웃긴 동작 (Comic Funny)',
+    jump: '🦘 점프 (Jump & Cushion)',
     swim: '🌊 해양 유영 (Harmonic Swim)'
   };
 

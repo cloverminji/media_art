@@ -316,6 +316,7 @@
 
   const MOTION_LABELS = {
     walk: '🚶 지면 보행',
+    jump: '🦘 점프',
     swim: '🌊 해양 유영',
     space: '✨ 무중력 부유',
     dance_full: '💃 댄스'
@@ -951,6 +952,7 @@
         t.motionType === 'dance_full' ? '💃 전신 댄스' :
         t.motionType === 'dance_lower' ? '🕺 하체 댄스' :
         t.motionType === 'funny' ? '🤪 웃긴' :
+        t.motionType === 'jump' ? '🦘 점프' :
         t.motionType === 'swim' ? '🌊 유영' :
         t.motionType === 'space' ? '🪐 부유' : '🚶 워킹';
 
@@ -1418,11 +1420,26 @@
   }
 
   // Live Animation Loop in Admin Studio
+  let adSkinnedMesh = null;
+
   function startAdPreviewLoop() {
     if (!importedChar || !adCtx) return;
     if (adAnimId) cancelAnimationFrame(adAnimId);
 
     const startTime = performance.now();
+
+    // Create SkinnedMesh if image is loaded
+    if (window.SkeletalMeshEngine && importedChar.mediaType !== 'video' && importedChar.charImg && importedChar.charImg.complete) {
+      adSkinnedMesh = new window.SkeletalMeshEngine.SkinnedMesh(
+        importedChar.charImg,
+        importedChar.skeleton,
+        importedChar.width,
+        importedChar.height,
+        8, 10
+      );
+    } else {
+      adSkinnedMesh = null;
+    }
 
     function loop(now) {
       const t = (now - startTime) / 1000;
@@ -1430,37 +1447,14 @@
 
       const cx = adPreviewCanvas.width / 2;
       const cy = adPreviewCanvas.height / 2;
-
       const motion = adMotionSelect.value || 'walk';
-      let bob = 0;
-      let tilt = 0;
-
-      if (motion === 'dance_full' || motion === 'dance') {
-        bob = -Math.abs(Math.sin(t * 4.5)) * 10;
-        tilt = Math.sin(t * 2.8) * 0.16;
-      } else if (motion === 'dance_lower') {
-        const bounce = Math.max(0, Math.sin(t * 5.0));
-        bob = -bounce * 12;
-        tilt = Math.sin(t * 2.5) * 0.09;
-      } else if (motion === 'funny') {
-        bob = Math.sin(t * 3.0) * 10;
-        tilt = Math.sin(t * 5.0) * 0.22 + Math.sin(t * 1.5) * 0.12;
-      } else if (motion === 'swim') {
-        bob = Math.sin(t * 3.5) * 6;
-        tilt = Math.sin(t * 2.2) * 0.12;
-      } else {
-        // walk
-        bob = -Math.abs(Math.sin(t * 4.2)) * 6;
-        tilt = Math.sin(t * 2.1) * 0.07;
-      }
 
       const scale = 140 / Math.max(importedChar.width, importedChar.height);
       const dw = importedChar.width * scale;
       const dh = importedChar.height * scale;
 
       adCtx.save();
-      adCtx.translate(cx, cy + bob);
-      adCtx.rotate(tilt);
+      adCtx.translate(cx, cy);
 
       // Draw character (Video frame with real-time chroma-key or Image)
       if (importedChar.mediaType === 'video' && importedChar.videoEl && importedChar.chromaCanvas) {
@@ -1477,46 +1471,32 @@
         }
         cCtx.putImageData(imgData, 0, 0);
         adCtx.drawImage(importedChar.chromaCanvas, -dw / 2, -dh / 2, dw, dh);
+      } else if (adSkinnedMesh && window.SkeletalMeshEngine) {
+        // FK & IK Pose solver
+        const solvedPose = window.SkeletalMeshEngine.solveSkeletonPose(
+          importedChar.skeleton,
+          motion,
+          t
+        );
+
+        // Render Skinned Mesh
+        adSkinnedMesh.draw(adCtx, solvedPose, -dw / 2, -dh / 2, dw, dh);
+
+        // Skeleton overlay
+        window.SkeletalMeshEngine.drawSkeletonOverlay(
+          adCtx,
+          solvedPose,
+          -dw / 2,
+          -dh / 2,
+          scale,
+          scale,
+          { alpha: 0.9, lineWidth: 2.2 }
+        );
       } else if (importedChar.charImg && importedChar.charImg.complete) {
         adCtx.drawImage(importedChar.charImg, -dw / 2, -dh / 2, dw, dh);
       }
 
-      // Draw Skeleton Bones overlay if non-video
-      if (importedChar.mediaType !== 'video') {
-        const skel = importedChar.skeleton;
-        const sx = (val) => (val - importedChar.width / 2) * scale;
-        const sy = (val) => (val - importedChar.height / 2) * scale;
-
-        adCtx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
-        adCtx.lineWidth = 2.2;
-        adCtx.lineCap = 'round';
-
-        // Spine
-        adCtx.beginPath();
-        adCtx.moveTo(sx(skel.head.x), sy(skel.head.y));
-        adCtx.lineTo(sx(skel.pelvis.x), sy(skel.pelvis.y));
-        // Arms
-        adCtx.moveTo(sx(skel.hand_l.x), sy(skel.hand_l.y));
-        adCtx.lineTo(sx(skel.shoulder_l.x), sy(skel.shoulder_l.y));
-        adCtx.lineTo(sx(skel.shoulder_r.x), sy(skel.shoulder_r.y));
-        adCtx.lineTo(sx(skel.hand_r.x), sy(skel.hand_r.y));
-        // Legs
-        adCtx.moveTo(sx(skel.foot_l.x), sy(skel.foot_l.y));
-        adCtx.lineTo(sx(skel.pelvis.x), sy(skel.pelvis.y));
-        adCtx.lineTo(sx(skel.foot_r.x), sy(skel.foot_r.y));
-        adCtx.stroke();
-
-        // Joints
-        adCtx.fillStyle = '#10b981';
-        for (const k in skel) {
-          adCtx.beginPath();
-          adCtx.arc(sx(skel[k].x), sy(skel[k].y), 3.5, 0, Math.PI * 2);
-          adCtx.fill();
-        }
-      }
-
       adCtx.restore();
-
       adAnimId = requestAnimationFrame(loop);
     }
 
