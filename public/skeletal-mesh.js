@@ -118,16 +118,16 @@
     let armRAngle1 = Math.atan2(elbowR0.y - shoulderR0.y, elbowR0.x - shoulderR0.x);
     let armRAngle2 = Math.atan2(handR0.y - elbowR0.y, handR0.x - elbowR0.x);
 
-    let footTargetL = { x: footL0.x, y: footL0.y };
-    let footTargetR = { x: footR0.x, y: footR0.y };
-    let useLegIK = true;
-    let kneeBendDirL = -1;
-    let kneeBendDirR = 1;
+    // 다리 스텝 상대 변위 (사용자 수동 보정 위치를 100% 보존하는 상대 델타)
+    let footDeltaL = { x: 0, y: 0 };
+    let footDeltaR = { x: 0, y: 0 };
+    let kneeFlexL = 0;
+    let kneeFlexR = 0;
 
     const motion = motionType || 'walk';
 
     if (motion === 'dance_full' || motion === 'dance') {
-      // 1. 전신 댄스 (그루브 & 양팔 스윙 FK)
+      // 1. 전신 댄스 (그루브 힙 바운스 & 스텝)
       const beat = time * 4.6;
       rootDx = Math.sin(beat * 0.5) * 12;
       rootDy = -Math.abs(Math.sin(beat)) * 14;
@@ -138,19 +138,16 @@
       const armSwing = Math.sin(beat) * 0.85;
       armLAngle1 += armSwing - 0.4;
       armLAngle2 = armLAngle1 + Math.sin(beat + 0.5) * 0.8 + 0.4;
-
       armRAngle1 -= armSwing + 0.4;
       armRAngle2 = armRAngle1 - Math.sin(beat + 0.5) * 0.8 - 0.4;
 
       const stepL = Math.max(0, Math.sin(beat));
       const stepR = Math.max(0, -Math.sin(beat));
-      footTargetL.x = footL0.x + Math.sin(beat * 0.5) * 10;
-      footTargetL.y = footL0.y - stepL * 16;
-      footTargetR.x = footR0.x + Math.sin(beat * 0.5) * 10;
-      footTargetR.y = footR0.y - stepR * 16;
+      footDeltaL = { x: Math.sin(beat * 0.5) * 8, y: -stepL * 14 };
+      footDeltaR = { x: Math.sin(beat * 0.5) * 8, y: -stepR * 14 };
 
     } else if (motion === 'dance_lower') {
-      // 2. 하체 댄스 (스쿼트 & 셔플 킥 IK)
+      // 2. 하체 댄스 (스쿼트 바운스 & 셔플 킥)
       const beat = time * 5.0;
       const squat = Math.max(0, Math.sin(beat));
       rootDy = -squat * 18;
@@ -165,20 +162,15 @@
 
       const kickPhase = Math.sin(beat * 0.5);
       if (kickPhase > 0.25) {
-        footTargetL.x = footL0.x + 18;
-        footTargetL.y = footL0.y - 25 * kickPhase;
-        footTargetR.y = footR0.y + rootDy * 0.2;
+        footDeltaL = { x: 16, y: -22 * kickPhase };
+        footDeltaR = { x: 0, y: rootDy * 0.2 };
       } else if (kickPhase < -0.25) {
-        footTargetR.x = footR0.x - 18;
-        footTargetR.y = footR0.y + 25 * kickPhase;
-        footTargetL.y = footL0.y + rootDy * 0.2;
-      } else {
-        footTargetL.y = footL0.y;
-        footTargetR.y = footR0.y;
+        footDeltaR = { x: -16, y: 22 * kickPhase };
+        footDeltaL = { x: 0, y: rootDy * 0.2 };
       }
 
     } else if (motion === 'funny') {
-      // 3. 웃긴 젤리 댄스 (코믹 바운스 & 비선형 흔들림)
+      // 3. 웃긴 젤리 댄스
       rootDx = Math.sin(time * 3.4) * 14;
       rootDy = Math.sin(time * 2.6) * 12;
       pelvisTilt = Math.sin(time * 3.8) * 0.20;
@@ -187,14 +179,11 @@
 
       armLAngle1 += Math.sin(time * 4.8) * 1.0;
       armLAngle2 = armLAngle1 + Math.sin(time * 6.2) * 1.2;
-
       armRAngle1 += Math.cos(time * 4.8) * 1.0;
       armRAngle2 = armRAngle1 - Math.cos(time * 6.2) * 1.2;
 
-      footTargetL.x = footL0.x + Math.sin(time * 3.4) * 16;
-      footTargetL.y = footL0.y - Math.abs(Math.sin(time * 2.6)) * 14;
-      footTargetR.x = footR0.x - Math.sin(time * 3.4) * 16;
-      footTargetR.y = footR0.y - Math.abs(Math.cos(time * 2.6)) * 14;
+      footDeltaL = { x: Math.sin(time * 3.4) * 12, y: -Math.abs(Math.sin(time * 2.6)) * 12 };
+      footDeltaR = { x: -Math.sin(time * 3.4) * 12, y: -Math.abs(Math.cos(time * 2.6)) * 12 };
 
     } else if (motion === 'jump') {
       // 4. 점프 (Squat 모으기 -> Fly 도약 -> Cushion 착지)
@@ -202,7 +191,6 @@
       let jumpY = 0;
 
       if (jumpCycle < 0.45) {
-        // Squat
         const p = jumpCycle / 0.45;
         jumpY = Math.sin(p * Math.PI) * 22;
         spineTilt = 0.08;
@@ -211,10 +199,9 @@
         armLAngle2 = armLAngle1 + 0.7;
         armRAngle1 -= 0.3;
         armRAngle2 = armRAngle1 - 0.7;
-        footTargetL.y = footL0.y;
-        footTargetR.y = footR0.y;
+        kneeFlexL = (kneeL0.x >= pelvis0.x ? 6 : -6);
+        kneeFlexR = (kneeR0.x >= pelvis0.x ? 6 : -6);
       } else if (jumpCycle < 1.35) {
-        // Fly
         const p = (jumpCycle - 0.45) / 0.9;
         const flight = Math.sin(p * Math.PI);
         jumpY = -flight * 45;
@@ -224,21 +211,19 @@
         armLAngle2 = armLAngle1 - 0.35;
         armRAngle1 += 1.3;
         armRAngle2 = armRAngle1 + 0.35;
-        footTargetL.y = footL0.y + jumpY * 0.7 + 10;
-        footTargetR.y = footR0.y + jumpY * 0.7 + 10;
+        footDeltaL = { x: 0, y: jumpY * 0.7 + 10 };
+        footDeltaR = { x: 0, y: jumpY * 0.7 + 10 };
       } else {
-        // Cushion
         const p = (jumpCycle - 1.35) / 0.65;
         const cushion = (1 - p) * 14;
         jumpY = cushion;
-        footTargetL.y = footL0.y;
-        footTargetR.y = footR0.y;
+        kneeFlexL = (kneeL0.x >= pelvis0.x ? 4 : -4) * (1 - p);
+        kneeFlexR = (kneeR0.x >= pelvis0.x ? 4 : -4) * (1 - p);
       }
       rootDy = jumpY;
 
     } else if (motion === 'swim') {
       // 5. 유영 (유선형 파동 Wave FK)
-      useLegIK = false;
       const swimFreq = time * 3.2;
       rootDy = Math.sin(swimFreq) * 6;
       pelvisTilt = Math.sin(swimFreq) * 0.12;
@@ -251,16 +236,13 @@
       armRAngle1 -= paddle;
       armRAngle2 = armRAngle1 - Math.sin(swimFreq - 0.3) * 0.28;
 
-      const legWaveL = Math.sin(swimFreq - 0.8) * 16;
-      const legWaveR = Math.sin(swimFreq - 1.2) * 16;
-
-      pose.knee_l = { x: kneeL0.x + legWaveL * 0.6, y: kneeL0.y + rootDy };
-      pose.foot_l = { x: footL0.x + legWaveL, y: footL0.y + rootDy };
-      pose.knee_r = { x: kneeR0.x + legWaveR * 0.6, y: kneeR0.y + rootDy };
-      pose.foot_r = { x: footR0.x + legWaveR, y: footR0.y + rootDy };
+      const legWaveL = Math.sin(swimFreq - 0.8) * 14;
+      const legWaveR = Math.sin(swimFreq - 1.2) * 14;
+      footDeltaL = { x: legWaveL, y: rootDy };
+      footDeltaR = { x: legWaveR, y: rootDy };
 
     } else {
-      // 6. 워킹 (지면 접지 2-Bone IK + 교차 스윙 FK)
+      // 6. 워킹 (지면 접지 보행 주기 + 교차 스윙)
       const walkSpeed = time * 4.0;
       rootDy = -Math.abs(Math.sin(walkSpeed)) * 8;
       pelvisTilt = Math.sin(walkSpeed) * 0.08;
@@ -270,25 +252,23 @@
       const armSwing = Math.sin(walkSpeed) * 0.52;
       armLAngle1 += armSwing;
       armLAngle2 = armLAngle1 + Math.max(0, -Math.cos(walkSpeed) * 0.38) + 0.14;
-
       armRAngle1 -= armSwing;
       armRAngle2 = armRAngle1 - Math.max(0, Math.cos(walkSpeed) * 0.38) - 0.14;
 
       const phaseL = walkSpeed;
       const phaseR = walkSpeed + Math.PI;
-
       const stepLiftL = Math.max(0, Math.sin(phaseL));
-      footTargetL.x = footL0.x + Math.cos(phaseL) * 16;
-      footTargetL.y = footL0.y - stepLiftL * 14;
-
       const stepLiftR = Math.max(0, Math.sin(phaseR));
-      footTargetR.x = footR0.x + Math.cos(phaseR) * 16;
-      footTargetR.y = footR0.y - stepLiftR * 14;
+
+      footDeltaL = { x: Math.cos(phaseL) * 14, y: -stepLiftL * 12 };
+      footDeltaR = { x: Math.cos(phaseR) * 14, y: -stepLiftR * 12 };
     }
 
+    // 1. Root: 골반 위치
     pose.pelvis.x = pelvis0.x + rootDx;
     pose.pelvis.y = pelvis0.y + rootDy;
 
+    // 2. Spine & Torso: 목 위치 (골반 기준 척추 회전)
     const spineVecX = neck0.x - pelvis0.x;
     const spineVecY = neck0.y - pelvis0.y;
     const cosSpine = Math.cos(spineTilt);
@@ -296,6 +276,7 @@
     pose.neck.x = pose.pelvis.x + (spineVecX * cosSpine - spineVecY * sinSpine);
     pose.neck.y = pose.pelvis.y + (spineVecX * sinSpine + spineVecY * cosSpine);
 
+    // 3. Head: 머리 위치
     const headVecX = head0.x - neck0.x;
     const headVecY = head0.y - neck0.y;
     const totalHeadTilt = spineTilt + headTilt;
@@ -304,14 +285,13 @@
     pose.head.x = pose.neck.x + (headVecX * cosHead - headVecY * sinHead);
     pose.head.y = pose.neck.y + (headVecX * sinHead + headVecY * cosHead);
 
+    // 4. Arms: 양팔 위치 (어깨 -> 팔꿈치 -> 손 FK)
     const sVecLX = shoulderL0.x - neck0.x;
     const sVecLY = shoulderL0.y - neck0.y;
     pose.shoulder_l.x = pose.neck.x + (sVecLX * cosSpine - sVecLY * sinSpine);
     pose.shoulder_l.y = pose.neck.y + (sVecLX * sinSpine + sVecLY * cosSpine);
-
     pose.elbow_l.x = pose.shoulder_l.x + Math.cos(armLAngle1) * armL1;
     pose.elbow_l.y = pose.shoulder_l.y + Math.sin(armLAngle1) * armL1;
-
     pose.hand_l.x = pose.elbow_l.x + Math.cos(armLAngle2) * armL2;
     pose.hand_l.y = pose.elbow_l.y + Math.sin(armLAngle2) * armL2;
 
@@ -319,25 +299,23 @@
     const sVecRY = shoulderR0.y - neck0.y;
     pose.shoulder_r.x = pose.neck.x + (sVecRX * cosSpine - sVecRY * sinSpine);
     pose.shoulder_r.y = pose.neck.y + (sVecRX * sinSpine + sVecRY * cosSpine);
-
     pose.elbow_r.x = pose.shoulder_r.x + Math.cos(armRAngle1) * armR1;
     pose.elbow_r.y = pose.shoulder_r.y + Math.sin(armRAngle1) * armR1;
-
     pose.hand_r.x = pose.elbow_r.x + Math.cos(armRAngle2) * armR2;
     pose.hand_r.y = pose.elbow_r.y + Math.sin(armRAngle2) * armR2;
 
-    if (useLegIK) {
-      const hipOffsetLX = (kneeL0.x - pelvis0.x) * 0.4;
-      const hipOffsetRX = (kneeR0.x - pelvis0.x) * 0.4;
-      const hipL = { x: pose.pelvis.x + hipOffsetLX, y: pose.pelvis.y };
-      const hipR = { x: pose.pelvis.x + hipOffsetRX, y: pose.pelvis.y };
+    // 5. Legs: 사용자 수동 보정 관절 위치(kneeL0, footL0, kneeR0, footR0)를 100% 보존하는 다리 관절
+    // 발 (Foot): 사용자가 보정한 원래 위치 + 보행/모션 상대 델타
+    pose.foot_l.x = footL0.x + footDeltaL.x;
+    pose.foot_l.y = footL0.y + footDeltaL.y;
+    pose.foot_r.x = footR0.x + footDeltaR.x;
+    pose.foot_r.y = footR0.y + footDeltaR.y;
 
-      pose.knee_l = solve2BoneIK(hipL, footTargetL, legL1, legL2, kneeBendDirL);
-      pose.foot_l = footTargetL;
-
-      pose.knee_r = solve2BoneIK(hipR, footTargetR, legR1, legR2, kneeBendDirR);
-      pose.foot_r = footTargetR;
-    }
+    // 무릎 (Knee): 사용자가 보정한 원래 무릎 위치 + 골반 바운스(65%) + 발 스텝(35%) + 완충 굴곡
+    pose.knee_l.x = kneeL0.x + rootDx * 0.65 + footDeltaL.x * 0.35 + kneeFlexL;
+    pose.knee_l.y = kneeL0.y + rootDy * 0.70 + footDeltaL.y * 0.35;
+    pose.knee_r.x = kneeR0.x + rootDx * 0.65 + footDeltaR.x * 0.35 + kneeFlexR;
+    pose.knee_r.y = kneeR0.y + rootDy * 0.70 + footDeltaR.y * 0.35;
 
     return pose;
   }
