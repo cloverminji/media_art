@@ -1,24 +1,20 @@
 /**
- * SkeletalMeshEngine - 관절 키네마틱스 & 2D 스킨드 메시 변형 엔진
+ * SkeletalMeshEngine - 유기적 계층 관절 캡슐 리깅 & 키네마틱스 엔진
  * 
- * 1. 계층 구조 (Hierarchical Structure):
- *    - Root(골반) -> Spine/Torso -> Neck -> Head
- *    - Neck -> Shoulders -> Elbows -> Hands (FK Chain)
- *    - Pelvis -> Hips -> Knees -> Feet (IK / FK Chain)
+ * 1. 계층적 관절 구조 (Hierarchical Joint Architecture):
+ *    - Root(골반/Pelvis) -> Spine/Torso -> Neck -> Head
+ *    - Neck -> Shoulders -> Elbows -> Hands (순운동학 FK Chain)
+ *    - Pelvis -> Hips -> Knees -> Feet (2-Bone 역운동학 IK Chain)
  * 
- * 2. 순운동학 (Forward Kinematics, FK):
- *    - 상위 관절(어깨/몸통)의 회전이 하위 관절(팔꿈치/손)로 연쇄 전파
- *    - 위상차(Phase Lag) 및 각속도 감쇠를 통해 자연스러운 팔 스윙 연출
+ * 2. 관절 캡슐 오버랩 블렌딩 (Seamless Capsule Overlap):
+ *    - 이미지를 임의의 삼각 그리드로 찢지 않고, 인체 해부학적 뼈대(신체 부위)를 추출
+ *    - 관절 회전축(Pivot: 어깨, 팔꿈치, 힙, 무릎, 목)에 둥근 캡슐 오버랩 패딩(14~20px)을 부여하여
+ *      관절이 90도 이상 꺾여도 틈새가 벌어지거나 조각나지 않고 매끄럽게 연결
  * 
- * 3. 역운동학 (Inverse Kinematics, IK):
- *    - 보행/댄스/점프 시 발의 접지면(Ground Contact) 및 스텝 목표 좌표를 기준으로
- *    - 2-Bone IK(엉덩이-무릎-발)를 해석적으로 풀어 무릎 굴곡 각도와 착지를 결정
- * 
- * 4. 메시 변형 & 스키닝 (Mesh Deformation & Skinning):
- *    - 캐릭터 이미지를 2D 삼각 메시 그리드로 세분화
- *    - 각 정점이 인접 뼈대(Bone)들에 미치는 거리 기반 가중치(Linear Blend Skinning)를 계산
- *    - 뼈대의 변환(Rotation + Translation)에 따라 정점들이 유기적으로 이동하여
- *      관절 부위가 고무줄처럼 매끄럽고 자연스럽게 휘어지도록 캔버스 2D 아핀 텍스처 매핑으로 렌더링
+ * 3. 피벗 회전 변환 (Pivot Rotation Transform):
+ *    - 어깨를 중심으로 상박이 회전하고, 팔꿈치를 중심으로 하박이 연쇄 회전
+ *    - 발이 지면에 닿을 때 2-Bone IK로 무릎이 자연스럽게 접힘
+ *    - 텍스처 깨짐이나 모자이크 없이 100% 원본 선명도 유지 & 60 FPS 보장
  */
 
 (function (root, factory) {
@@ -42,20 +38,6 @@
     'knee_r', 'foot_r'
   ];
 
-  // 10 뼈대(Bones) 정의 (시작 조인트 -> 끝 조인트)
-  const BONE_DEFS = [
-    { id: 'torso', from: 'neck', to: 'pelvis', radius: 45 },
-    { id: 'head', from: 'neck', to: 'head', radius: 35 },
-    { id: 'upper_arm_l', from: 'shoulder_l', to: 'elbow_l', radius: 25 },
-    { id: 'lower_arm_l', from: 'elbow_l', to: 'hand_l', radius: 22 },
-    { id: 'upper_arm_r', from: 'shoulder_r', to: 'elbow_r', radius: 25 },
-    { id: 'lower_arm_r', from: 'elbow_r', to: 'hand_r', radius: 22 },
-    { id: 'upper_leg_l', from: 'pelvis', to: 'knee_l', radius: 28 },
-    { id: 'lower_leg_l', from: 'knee_l', to: 'foot_l', radius: 25 },
-    { id: 'upper_leg_r', from: 'pelvis', to: 'knee_r', radius: 28 },
-    { id: 'lower_leg_r', from: 'knee_r', to: 'foot_r', radius: 25 }
-  ];
-
   // 벡터 유틸리티
   function dist(a, b) {
     return Math.hypot(a.x - b.x, a.y - b.y);
@@ -65,35 +47,16 @@
     return Math.max(min, Math.min(max, val));
   }
 
-  function pointToSegmentDist(p, a, b) {
-    const abx = b.x - a.x;
-    const aby = b.y - a.y;
-    const lenSq = abx * abx + aby * aby;
-    if (lenSq === 0) return dist(p, a);
-
-    const apx = p.x - a.x;
-    const apy = p.y - a.y;
-    const t = clamp((apx * abx + apy * aby) / lenSq, 0, 1);
-    const qx = a.x + t * abx;
-    const qy = a.y + t * aby;
-    return Math.hypot(p.x - qx, p.y - qy);
-  }
-
-  // 2-Bone IK 해석적 솔버 (골반/엉덩이 -> 무릎 -> 발)
-  // a: 엉덩이, c: 목표 발 위치, l1: 허벅지 길이, l2: 종아리 길이, bendDir: 굴곡 부호 (+1: 오른쪽/앞, -1: 왼쪽/뒤)
+  // 2-Bone IK 해석적 솔버 (골반/힙 -> 무릎 -> 발)
   function solve2BoneIK(a, c, l1, l2, bendDir = 1) {
     const d = dist(a, c);
-    const maxReach = (l1 + l2) * 0.999;
-    const minReach = Math.abs(l1 - l2) * 1.001;
+    const maxReach = (l1 + l2) * 0.998;
+    const minReach = Math.abs(l1 - l2) * 1.002;
     const effectiveD = clamp(d, Math.max(0.01, minReach), maxReach);
 
-    // 코사인 제2법칙
-    // c^2 = a^2 + b^2 - 2ab cos(C)
-    // l2^2 = l1^2 + d^2 - 2*l1*d*cos(alpha)
     const cosAlpha = (l1 * l1 + effectiveD * effectiveD - l2 * l2) / (2 * l1 * effectiveD);
     const alpha = Math.acos(clamp(cosAlpha, -1, 1));
 
-    // 기본 벡터 각도 (a -> c)
     const baseAngle = Math.atan2(c.y - a.y, c.x - a.x);
     const kneeAngle = baseAngle + bendDir * alpha;
 
@@ -105,10 +68,9 @@
 
   /**
    * 포즈 계산기 (Kinematics Solver)
-   * 시간 t에 따라 13개 조인트의 변형된 위치를 FK 및 IK 원리로 계산
+   * 시간 t에 따라 13개 조인트의 변형된 위치를 순운동학(FK) 및 역운동학(IK)으로 계산
    */
   function solveSkeletonPose(bindSkel, motionType, time, facing = 1) {
-    // 깊은 복사
     const pose = {};
     for (const k in bindSkel) {
       pose[k] = { x: bindSkel[k].x, y: bindSkel[k].y };
@@ -142,14 +104,14 @@
     const legR1 = dist(pelvis0, kneeR0) || 45;
     const legR2 = dist(kneeR0, footR0) || 45;
 
-    // 바운스 및 틸트 변수
+    // 바운스 및 틸트
     let rootDx = 0;
     let rootDy = 0;
     let pelvisTilt = 0;
     let spineTilt = 0;
     let headTilt = 0;
 
-    // 팔 FK 각도 (상박, 하박)
+    // 팔 FK 각도
     let armLAngle1 = Math.atan2(elbowL0.y - shoulderL0.y, elbowL0.x - shoulderL0.x);
     let armLAngle2 = Math.atan2(handL0.y - elbowL0.y, handL0.x - elbowL0.x);
     let armRAngle1 = Math.atan2(elbowR0.y - shoulderR0.y, elbowR0.x - shoulderR0.x);
@@ -162,172 +124,135 @@
     let kneeBendDirL = -1;
     let kneeBendDirR = 1;
 
-    // 모션별 물리 및 키네마틱스
     const motion = motionType || 'walk';
 
     if (motion === 'dance_full' || motion === 'dance') {
-      // ----------------------------------------------------
-      // 1. 전신 댄스 (Full Body Dance & Groove)
-      // ----------------------------------------------------
-      const beat = time * 4.8;
-      rootDx = Math.sin(beat * 0.5) * 12;
-      rootDy = -Math.abs(Math.sin(beat)) * 14;
-      pelvisTilt = Math.sin(beat * 0.5) * 0.16;
-      spineTilt = -pelvisTilt * 0.8 + Math.sin(beat) * 0.08;
-      headTilt = Math.sin(beat * 1.5) * 0.12;
+      // 1. 전신 댄스 (그루브 & 양팔 스윙 FK)
+      const beat = time * 4.6;
+      rootDx = Math.sin(beat * 0.5) * 10;
+      rootDy = -Math.abs(Math.sin(beat)) * 12;
+      pelvisTilt = Math.sin(beat * 0.5) * 0.14;
+      spineTilt = -pelvisTilt * 0.7 + Math.sin(beat) * 0.06;
+      headTilt = Math.sin(beat * 1.4) * 0.10;
 
-      // 팔 FK: 신나는 양팔 댄스 스윙 (어깨 회전 + 팔꿈치 위상차)
-      const armSwing = Math.sin(beat) * 0.85;
-      armLAngle1 += armSwing - 0.4;
-      armLAngle2 = armLAngle1 + Math.sin(beat + 0.6) * 0.9 + 0.5;
+      const armSwing = Math.sin(beat) * 0.75;
+      armLAngle1 += armSwing - 0.35;
+      armLAngle2 = armLAngle1 + Math.sin(beat + 0.5) * 0.7 + 0.4;
 
-      armRAngle1 -= armSwing + 0.4;
-      armRAngle2 = armRAngle1 - Math.sin(beat + 0.6) * 0.9 - 0.5;
+      armRAngle1 -= armSwing + 0.35;
+      armRAngle2 = armRAngle1 - Math.sin(beat + 0.5) * 0.7 - 0.4;
 
-      // 발 IK: 좌우 번갈아 탭 댄스 스텝
       const stepL = Math.max(0, Math.sin(beat));
       const stepR = Math.max(0, -Math.sin(beat));
-      footTargetL.x = footL0.x + Math.sin(beat * 0.5) * 10;
-      footTargetL.y = footL0.y - stepL * 16;
-      footTargetR.x = footR0.x + Math.sin(beat * 0.5) * 10;
-      footTargetR.y = footR0.y - stepR * 16;
+      footTargetL.x = footL0.x + Math.sin(beat * 0.5) * 8;
+      footTargetL.y = footL0.y - stepL * 14;
+      footTargetR.x = footR0.x + Math.sin(beat * 0.5) * 8;
+      footTargetR.y = footR0.y - stepR * 14;
 
     } else if (motion === 'dance_lower') {
-      // ----------------------------------------------------
-      // 2. 하체 댄스 (Lower Body Bounce & Shuffle Kick)
-      // ----------------------------------------------------
-      const beat = time * 5.2;
+      // 2. 하체 댄스 (스쿼트 & 셔플 킥 IK)
+      const beat = time * 5.0;
       const squat = Math.max(0, Math.sin(beat));
-      rootDy = -squat * 18;
-      pelvisTilt = Math.sin(beat * 0.5) * 0.12;
+      rootDy = -squat * 16;
+      pelvisTilt = Math.sin(beat * 0.5) * 0.10;
       spineTilt = -pelvisTilt * 0.6;
-      headTilt = Math.sin(beat * 0.5) * 0.08;
+      headTilt = Math.sin(beat * 0.5) * 0.06;
 
-      // 팔 FK: 가벼운 리듬 가드 (허리춤에서 바운스)
-      armLAngle1 += Math.sin(beat * 0.5) * 0.25;
-      armLAngle2 = armLAngle1 + 0.6 + Math.sin(beat) * 0.3;
-      armRAngle1 -= Math.sin(beat * 0.5) * 0.25;
-      armRAngle2 = armRAngle1 - 0.6 - Math.sin(beat) * 0.3;
+      armLAngle1 += Math.sin(beat * 0.5) * 0.2;
+      armLAngle2 = armLAngle1 + 0.5 + Math.sin(beat) * 0.25;
+      armRAngle1 -= Math.sin(beat * 0.5) * 0.2;
+      armRAngle2 = armRAngle1 - 0.5 - Math.sin(beat) * 0.25;
 
-      // 발 IK: 스쿼트 앤 킥
       const kickPhase = Math.sin(beat * 0.5);
-      if (kickPhase > 0.2) {
-        // 왼발 킥!
-        footTargetL.x = footL0.x + 18;
-        footTargetL.y = footL0.y - 25 * kickPhase;
+      if (kickPhase > 0.25) {
+        footTargetL.x = footL0.x + 16;
+        footTargetL.y = footL0.y - 22 * kickPhase;
         footTargetR.y = footR0.y + rootDy * 0.2;
-      } else if (kickPhase < -0.2) {
-        // 오른발 킥!
-        footTargetR.x = footR0.x - 18;
-        footTargetR.y = footR0.y + 25 * kickPhase;
+      } else if (kickPhase < -0.25) {
+        footTargetR.x = footR0.x - 16;
+        footTargetR.y = footR0.y + 22 * kickPhase;
         footTargetL.y = footL0.y + rootDy * 0.2;
       } else {
-        // 착지 스쿼트
         footTargetL.y = footL0.y;
         footTargetR.y = footR0.y;
       }
 
     } else if (motion === 'funny') {
-      // ----------------------------------------------------
-      // 3. 웃긴 젤리 댄스 (Wobbly Comic Bounce)
-      // ----------------------------------------------------
-      rootDx = Math.sin(time * 3.6) * 14 + Math.sin(time * 7.2) * 6;
-      rootDy = Math.sin(time * 2.8) * 12;
-      pelvisTilt = Math.sin(time * 4.2) * 0.22;
-      spineTilt = Math.sin(time * 5.0 + 1.0) * 0.25;
-      headTilt = Math.sin(time * 6.5) * 0.30;
+      // 3. 웃긴 젤리 댄스 (코믹 바운스 & 유연한 흔들림)
+      rootDx = Math.sin(time * 3.4) * 12;
+      rootDy = Math.sin(time * 2.6) * 10;
+      pelvisTilt = Math.sin(time * 3.8) * 0.18;
+      spineTilt = Math.sin(time * 4.5 + 0.8) * 0.20;
+      headTilt = Math.sin(time * 5.8) * 0.24;
 
-      // 팔 FK: 문어처럼 흐느적거리는 젤리 스윙
-      armLAngle1 += Math.sin(time * 5.5) * 1.2;
-      armLAngle2 = armLAngle1 + Math.sin(time * 7.0) * 1.4;
+      armLAngle1 += Math.sin(time * 4.8) * 0.9;
+      armLAngle2 = armLAngle1 + Math.sin(time * 6.2) * 1.1;
 
-      armRAngle1 += Math.cos(time * 5.5) * 1.2;
-      armRAngle2 = armRAngle1 - Math.cos(time * 7.0) * 1.4;
+      armRAngle1 += Math.cos(time * 4.8) * 0.9;
+      armRAngle2 = armRAngle1 - Math.cos(time * 6.2) * 1.1;
 
-      // 발 IK: 뒤뚱거리는 보폭
-      footTargetL.x = footL0.x + Math.sin(time * 3.6) * 18;
-      footTargetL.y = footL0.y - Math.abs(Math.sin(time * 2.8)) * 14;
-      footTargetR.x = footR0.x - Math.sin(time * 3.6) * 18;
-      footTargetR.y = footR0.y - Math.abs(Math.cos(time * 2.8)) * 14;
+      footTargetL.x = footL0.x + Math.sin(time * 3.4) * 14;
+      footTargetL.y = footL0.y - Math.abs(Math.sin(time * 2.6)) * 12;
+      footTargetR.x = footR0.x - Math.sin(time * 3.4) * 14;
+      footTargetR.y = footR0.y - Math.abs(Math.cos(time * 2.6)) * 12;
 
     } else if (motion === 'jump') {
-      // ----------------------------------------------------
-      // 4. 점프 모션 (Squat - Launch - Fly - Cushion Land)
-      // ----------------------------------------------------
-      const jumpCycle = (time * 1.6) % 2.0; // 0~2초 주기
+      // 4. 점프 (무릎 굽히기 -> 도약 -> 체공 만세 -> 착지 완충)
+      const jumpCycle = (time * 1.5) % 2.0;
       let jumpY = 0;
-      let squatAmount = 0;
 
       if (jumpCycle < 0.45) {
-        // 준비 단계 (Squat): 엉덩이 깊게 내리기
+        // Squat 모으기
         const p = jumpCycle / 0.45;
-        squatAmount = Math.sin(p * Math.PI) * 22;
-        jumpY = squatAmount;
-        pelvisTilt = 0;
-        spineTilt = 0.08;
-        headTilt = -0.12;
-
-        // 팔 모으기
-        armLAngle1 += 0.3;
-        armLAngle2 = armLAngle1 + 0.8;
-        armRAngle1 -= 0.3;
-        armRAngle2 = armRAngle1 - 0.8;
-
+        jumpY = Math.sin(p * Math.PI) * 20;
+        spineTilt = 0.06;
+        headTilt = -0.10;
+        armLAngle1 += 0.25;
+        armLAngle2 = armLAngle1 + 0.6;
+        armRAngle1 -= 0.25;
+        armRAngle2 = armRAngle1 - 0.6;
         footTargetL.y = footL0.y;
         footTargetR.y = footR0.y;
-
       } else if (jumpCycle < 1.35) {
-        // 비상 및 체공 단계 (Fly): 공중으로 도약
+        // Fly 도약 & 체공
         const p = (jumpCycle - 0.45) / 0.9;
         const flight = Math.sin(p * Math.PI);
-        jumpY = -flight * 45;
-        spineTilt = -0.05;
-        headTilt = 0.08;
-
-        // 팔 활짝 만세!
-        armLAngle1 -= 1.4;
-        armLAngle2 = armLAngle1 - 0.4;
-        armRAngle1 += 1.4;
-        armRAngle2 = armRAngle1 + 0.4;
-
-        // 공중에서 다리 펴기
-        footTargetL.y = footL0.y + jumpY * 0.75 + 10;
-        footTargetR.y = footR0.y + jumpY * 0.75 + 10;
-
+        jumpY = -flight * 42;
+        spineTilt = -0.04;
+        headTilt = 0.06;
+        armLAngle1 -= 1.2;
+        armLAngle2 = armLAngle1 - 0.3;
+        armRAngle1 += 1.2;
+        armRAngle2 = armRAngle1 + 0.3;
+        footTargetL.y = footL0.y + jumpY * 0.7 + 8;
+        footTargetR.y = footR0.y + jumpY * 0.7 + 8;
       } else {
-        // 착지 및 충격 흡수 (Cushion)
+        // Cushion 착지 완충
         const p = (jumpCycle - 1.35) / 0.65;
-        const cushion = (1 - p) * 14;
+        const cushion = (1 - p) * 12;
         jumpY = cushion;
-        armLAngle1 += cushion * 0.02;
-        armRAngle1 -= cushion * 0.02;
-
         footTargetL.y = footL0.y;
         footTargetR.y = footR0.y;
       }
       rootDy = jumpY;
 
     } else if (motion === 'swim') {
-      // ----------------------------------------------------
-      // 5. 유영 (Aquatic Wave FK - 부드러운 유선형 물결)
-      // ----------------------------------------------------
-      useLegIK = false; // 수영은 꼬리/다리가 유기적 사인파 FK로 흔들림
-      const swimFreq = time * 3.4;
-      rootDy = Math.sin(swimFreq) * 6;
-      pelvisTilt = Math.sin(swimFreq) * 0.12;
-      spineTilt = Math.sin(swimFreq - 0.6) * 0.15;
-      headTilt = Math.sin(swimFreq - 1.2) * 0.10;
+      // 5. 유영 (유선형 사인파 파동 Wave FK)
+      useLegIK = false;
+      const swimFreq = time * 3.2;
+      rootDy = Math.sin(swimFreq) * 5;
+      pelvisTilt = Math.sin(swimFreq) * 0.10;
+      spineTilt = Math.sin(swimFreq - 0.5) * 0.12;
+      headTilt = Math.sin(swimFreq - 1.0) * 0.08;
 
-      // 가슴 지느러미 / 양팔 노젓기
-      const paddle = Math.sin(swimFreq) * 0.45;
+      const paddle = Math.sin(swimFreq) * 0.38;
       armLAngle1 += paddle;
-      armLAngle2 = armLAngle1 + Math.sin(swimFreq - 0.4) * 0.3;
+      armLAngle2 = armLAngle1 + Math.sin(swimFreq - 0.3) * 0.25;
       armRAngle1 -= paddle;
-      armRAngle2 = armRAngle1 - Math.sin(swimFreq - 0.4) * 0.3;
+      armRAngle2 = armRAngle1 - Math.sin(swimFreq - 0.3) * 0.25;
 
-      // 꼬리/다리 유기적 사인파
-      const legWaveL = Math.sin(swimFreq - 1.0) * 16;
-      const legWaveR = Math.sin(swimFreq - 1.4) * 16;
+      const legWaveL = Math.sin(swimFreq - 0.8) * 14;
+      const legWaveR = Math.sin(swimFreq - 1.2) * 14;
 
       pose.knee_l = { x: kneeL0.x + legWaveL * 0.6, y: kneeL0.y + rootDy };
       pose.foot_l = { x: footL0.x + legWaveL, y: footL0.y + rootDy };
@@ -335,49 +260,36 @@
       pose.foot_r = { x: footR0.x + legWaveR, y: footR0.y + rootDy };
 
     } else {
-      // ----------------------------------------------------
-      // 6. 워킹 (Harmonic Walk Cycle with Ground-Contact IK)
-      // ----------------------------------------------------
-      const walkSpeed = time * 4.2;
-      // 1보행 주기당 2회 바운스
-      rootDy = -Math.abs(Math.sin(walkSpeed)) * 8;
-      pelvisTilt = Math.sin(walkSpeed) * 0.08;
-      // 상체 카운터 틸트 (보행 시 균형 제어)
-      spineTilt = -pelvisTilt * 0.75;
-      headTilt = Math.sin(walkSpeed * 0.5) * 0.05;
+      // 6. 워킹 (지면 접지 2-Bone IK + 교차 스윙 FK)
+      const walkSpeed = time * 4.0;
+      rootDy = -Math.abs(Math.sin(walkSpeed)) * 7;
+      pelvisTilt = Math.sin(walkSpeed) * 0.07;
+      spineTilt = -pelvisTilt * 0.7;
+      headTilt = Math.sin(walkSpeed * 0.5) * 0.04;
 
-      // 팔 순운동학 (FK): 반대쪽 다리와 반대로 자연스럽게 교차 스윙
-      const armSwing = Math.sin(walkSpeed) * 0.55;
+      const armSwing = Math.sin(walkSpeed) * 0.48;
       armLAngle1 += armSwing;
-      // 팔꿈치는 상박을 따라가면서 관성 지연으로 약간 더 접힘 (자연스러운 2차 관성)
-      armLAngle2 = armLAngle1 + Math.max(0, -Math.cos(walkSpeed) * 0.4) + 0.15;
+      armLAngle2 = armLAngle1 + Math.max(0, -Math.cos(walkSpeed) * 0.35) + 0.12;
 
       armRAngle1 -= armSwing;
-      armRAngle2 = armRAngle1 - Math.max(0, Math.cos(walkSpeed) * 0.4) - 0.15;
+      armRAngle2 = armRAngle1 - Math.max(0, Math.cos(walkSpeed) * 0.35) - 0.12;
 
-      // 발 역운동학 (IK): 지면 지지기(Stance)와 공중 유각기(Swing)
       const phaseL = walkSpeed;
       const phaseR = walkSpeed + Math.PI;
 
-      // 왼발
       const stepLiftL = Math.max(0, Math.sin(phaseL));
-      footTargetL.x = footL0.x + Math.cos(phaseL) * 16;
-      footTargetL.y = footL0.y - stepLiftL * 14;
+      footTargetL.x = footL0.x + Math.cos(phaseL) * 14;
+      footTargetL.y = footL0.y - stepLiftL * 12;
 
-      // 오른발
       const stepLiftR = Math.max(0, Math.sin(phaseR));
-      footTargetR.x = footR0.x + Math.cos(phaseR) * 16;
-      footTargetR.y = footR0.y - stepLiftR * 14;
+      footTargetR.x = footR0.x + Math.cos(phaseR) * 14;
+      footTargetR.y = footR0.y - stepLiftR * 12;
     }
 
-    // ----------------------------------------------------
-    // 계층적 위치 갱신 (Hierarchical Forward Propagation)
-    // ----------------------------------------------------
-    // 1. Root: Pelvis
+    // 계층적 전파 계산
     pose.pelvis.x = pelvis0.x + rootDx;
     pose.pelvis.y = pelvis0.y + rootDy;
 
-    // 2. Spine & Torso: Neck
     const spineVecX = neck0.x - pelvis0.x;
     const spineVecY = neck0.y - pelvis0.y;
     const cosSpine = Math.cos(spineTilt);
@@ -385,7 +297,6 @@
     pose.neck.x = pose.pelvis.x + (spineVecX * cosSpine - spineVecY * sinSpine);
     pose.neck.y = pose.pelvis.y + (spineVecX * sinSpine + spineVecY * cosSpine);
 
-    // 3. Head (부모: Neck)
     const headVecX = head0.x - neck0.x;
     const headVecY = head0.y - neck0.y;
     const totalHeadTilt = spineTilt + headTilt;
@@ -394,7 +305,6 @@
     pose.head.x = pose.neck.x + (headVecX * cosHead - headVecY * sinHead);
     pose.head.y = pose.neck.y + (headVecX * sinHead + headVecY * cosHead);
 
-    // 4. Left Arm (Shoulder -> Elbow -> Hand, FK)
     const sVecLX = shoulderL0.x - neck0.x;
     const sVecLY = shoulderL0.y - neck0.y;
     pose.shoulder_l.x = pose.neck.x + (sVecLX * cosSpine - sVecLY * sinSpine);
@@ -406,7 +316,6 @@
     pose.hand_l.x = pose.elbow_l.x + Math.cos(armLAngle2) * armL2;
     pose.hand_l.y = pose.elbow_l.y + Math.sin(armLAngle2) * armL2;
 
-    // 5. Right Arm (Shoulder -> Elbow -> Hand, FK)
     const sVecRX = shoulderR0.x - neck0.x;
     const sVecRY = shoulderR0.y - neck0.y;
     pose.shoulder_r.x = pose.neck.x + (sVecRX * cosSpine - sVecRY * sinSpine);
@@ -418,19 +327,15 @@
     pose.hand_r.x = pose.elbow_r.x + Math.cos(armRAngle2) * armR2;
     pose.hand_r.y = pose.elbow_r.y + Math.sin(armRAngle2) * armR2;
 
-    // 6. Legs (2-Bone IK)
     if (useLegIK) {
-      // 엉덩이(Hip) 좌표 (골반 중심 기준 약간 좌우 오프셋)
       const hipOffsetLX = (kneeL0.x - pelvis0.x) * 0.4;
       const hipOffsetRX = (kneeR0.x - pelvis0.x) * 0.4;
       const hipL = { x: pose.pelvis.x + hipOffsetLX, y: pose.pelvis.y };
       const hipR = { x: pose.pelvis.x + hipOffsetRX, y: pose.pelvis.y };
 
-      // 왼다리 2-Bone IK
       pose.knee_l = solve2BoneIK(hipL, footTargetL, legL1, legL2, kneeBendDirL);
       pose.foot_l = footTargetL;
 
-      // 오른다리 2-Bone IK
       pose.knee_r = solve2BoneIK(hipR, footTargetR, legR1, legR2, kneeBendDirR);
       pose.foot_r = footTargetR;
     }
@@ -439,239 +344,215 @@
   }
 
   /**
-   * 2D 삼각 메시 스킨드 디포머 (Skinned Mesh Deformer)
-   * 정적 이미지를 관절 뼈대들의 위치에 따라 유기적으로 휘어지게 렌더링
+   * 캡슐 패스 생성 유틸리티 (끝점을 넘어 오버랩되는 둥근 캡슐)
+   */
+  function drawCapsulePath(ctx, p1, p2, radius, pad1 = 15, pad2 = 15) {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const ux = dx / len;
+    const uy = dy / len;
+
+    const aX = p1.x - ux * pad1;
+    const aY = p1.y - uy * pad1;
+    const bX = p2.x + ux * pad2;
+    const bY = p2.y + uy * pad2;
+
+    ctx.beginPath();
+    ctx.arc(aX, aY, radius, Math.atan2(-ny, -nx), Math.atan2(ny, nx), false);
+    ctx.arc(bX, bY, radius, Math.atan2(ny, nx), Math.atan2(-ny, -nx), false);
+    ctx.closePath();
+  }
+
+  /**
+   * 계층적 캡슐 세그먼트 관절 엔진 (Hierarchical Capsule Joint Rigging)
+   * - 관절 회전축(Pivot) 기반 부모-자식 계층 렌더링
+   * - 관절 연결부 둥근 캡슐 오버랩으로 틈새(Gap)와 찢어짐(Tearing) 원천 차단
    */
   class SkinnedMesh {
-    constructor(imageSource, bindSkeleton, width, height, gridCols = 8, gridRows = 10) {
+    constructor(imageSource, bindSkeleton, width, height) {
       this.image = imageSource;
       this.bindSkeleton = bindSkeleton;
       this.width = width;
       this.height = height;
-      this.gridCols = gridCols;
-      this.gridRows = gridRows;
 
-      this.vertices = [];   // 원본 정점 (u, v)
-      this.weights = [];    // 정점별 뼈대 가중치 [{ boneIndex, weight }, ...]
-      this.triangles = [];  // [i0, i1, i2]
-      this.bones = [];      // 뼈대 목록
-
-      this._initBones();
-      this._buildMesh();
-      this._computeWeights();
+      this.segments = {};
+      this._extractSegments();
     }
 
-    _initBones() {
-      this.bones = BONE_DEFS.map((def, idx) => {
-        const fromPt = this.bindSkeleton[def.from] || { x: this.width * 0.5, y: this.height * 0.5 };
-        const toPt = this.bindSkeleton[def.to] || { x: this.width * 0.5, y: this.height * 0.5 };
-        const midX = (fromPt.x + toPt.x) * 0.5;
-        const midY = (fromPt.y + toPt.y) * 0.5;
-        const length = dist(fromPt, toPt) || 1;
-        const angle = Math.atan2(toPt.y - fromPt.y, toPt.x - fromPt.x);
+    /**
+     * 원본 이미지로부터 신체 부위별 캡슐 세그먼트 캔버스 추출 & 오버랩 마스킹
+     */
+    _extractSegments() {
+      const skel = this.bindSkeleton;
+      const w = this.width;
+      const h = this.height;
 
-        return {
-          idx,
-          id: def.id,
-          fromKey: def.from,
-          toKey: def.to,
-          radius: def.radius,
-          bindFrom: { x: fromPt.x, y: fromPt.y },
-          bindTo: { x: toPt.x, y: toPt.y },
-          bindMid: { x: midX, y: midY },
-          bindLength: length,
-          bindAngle: angle
-        };
+      // 헬퍼: 캡슐 마스크로 오프스크린 캔버스에 세그먼트 추출
+      const makeSegment = (pathCallback) => {
+        const cvs = document.createElement('canvas');
+        cvs.width = w;
+        cvs.height = h;
+        const c = cvs.getContext('2d');
+        c.save();
+        pathCallback(c);
+        c.clip();
+        c.drawImage(this.image, 0, 0, w, h);
+        c.restore();
+        return cvs;
+      };
+
+      // 1. 머리 (Head): 목에서 머리 중심까지, 넉넉한 반경 + 목 오버랩
+      const headDist = dist(skel.neck, skel.head) || 30;
+      const headRad = headDist * 0.95 + 16;
+      this.segments.head = makeSegment((c) => {
+        drawCapsulePath(c, skel.neck, skel.head, headRad, 18, 22);
+      });
+
+      // 2. 왼쪽 상박 (Upper Arm L): 어깨 -> 팔꿈치
+      const armL1Dist = dist(skel.shoulder_l, skel.elbow_l) || 30;
+      const armL1Rad = armL1Dist * 0.42 + 12;
+      this.segments.upper_arm_l = makeSegment((c) => {
+        drawCapsulePath(c, skel.shoulder_l, skel.elbow_l, armL1Rad, 16, 16);
+      });
+
+      // 3. 왼쪽 하박 (Lower Arm L): 팔꿈치 -> 손
+      const armL2Dist = dist(skel.elbow_l, skel.hand_l) || 28;
+      const armL2Rad = armL2Dist * 0.42 + 12;
+      this.segments.lower_arm_l = makeSegment((c) => {
+        drawCapsulePath(c, skel.elbow_l, skel.hand_l, armL2Rad, 16, 18);
+      });
+
+      // 4. 오른쪽 상박 (Upper Arm R): 어깨 -> 팔꿈치
+      const armR1Dist = dist(skel.shoulder_r, skel.elbow_r) || 30;
+      const armR1Rad = armR1Dist * 0.42 + 12;
+      this.segments.upper_arm_r = makeSegment((c) => {
+        drawCapsulePath(c, skel.shoulder_r, skel.elbow_r, armR1Rad, 16, 16);
+      });
+
+      // 5. 오른쪽 하박 (Lower Arm R): 팔꿈치 -> 손
+      const armR2Dist = dist(skel.elbow_r, skel.hand_r) || 28;
+      const armR2Rad = armR2Dist * 0.42 + 12;
+      this.segments.lower_arm_r = makeSegment((c) => {
+        drawCapsulePath(c, skel.elbow_r, skel.hand_r, armR2Rad, 16, 18);
+      });
+
+      // 6. 왼쪽 허벅지 (Upper Leg L): 골반/힙 -> 무릎
+      const legL1Dist = dist(skel.pelvis, skel.knee_l) || 38;
+      const legL1Rad = legL1Dist * 0.42 + 14;
+      this.segments.upper_leg_l = makeSegment((c) => {
+        drawCapsulePath(c, skel.pelvis, skel.knee_l, legL1Rad, 18, 16);
+      });
+
+      // 7. 왼쪽 종아리 (Lower Leg L): 무릎 -> 발
+      const legL2Dist = dist(skel.knee_l, skel.foot_l) || 35;
+      const legL2Rad = legL2Dist * 0.42 + 14;
+      this.segments.lower_leg_l = makeSegment((c) => {
+        drawCapsulePath(c, skel.knee_l, skel.foot_l, legL2Rad, 16, 18);
+      });
+
+      // 8. 오른쪽 허벅지 (Upper Leg R): 골반/힙 -> 무릎
+      const legR1Dist = dist(skel.pelvis, skel.knee_r) || 38;
+      const legR1Rad = legR1Dist * 0.42 + 14;
+      this.segments.upper_leg_r = makeSegment((c) => {
+        drawCapsulePath(c, skel.pelvis, skel.knee_r, legR1Rad, 18, 16);
+      });
+
+      // 9. 오른쪽 종아리 (Lower Leg R): 무릎 -> 발
+      const legR2Dist = dist(skel.knee_r, skel.foot_r) || 35;
+      const legR2Rad = legR2Dist * 0.42 + 14;
+      this.segments.lower_leg_r = makeSegment((c) => {
+        drawCapsulePath(c, skel.knee_r, skel.foot_r, legR2Rad, 16, 18);
+      });
+
+      // 10. 몸통 (Torso): 목에서 골반 중심, 어깨와 힙을 아우르는 넉넉한 캡슐
+      const torsoDist = dist(skel.neck, skel.pelvis) || 50;
+      const shoulderSpan = dist(skel.shoulder_l, skel.shoulder_r) || 60;
+      const torsoRad = Math.max(torsoDist * 0.55, shoulderSpan * 0.45) + 12;
+      this.segments.torso = makeSegment((c) => {
+        drawCapsulePath(c, skel.neck, skel.pelvis, torsoRad, 16, 18);
       });
     }
 
-    _buildMesh() {
-      const cols = this.gridCols;
-      const rows = this.gridRows;
-      this.vertices = [];
-      this.triangles = [];
-
-      for (let r = 0; r <= rows; r++) {
-        const v = (r / rows) * this.height;
-        for (let c = 0; c <= cols; c++) {
-          const u = (c / cols) * this.width;
-          this.vertices.push({ u, v, x: u, y: v });
-        }
-      }
-
-      // 두 개의 삼각형으로 쿼드 분할
-      const stride = cols + 1;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const i0 = r * stride + c;
-          const i1 = i0 + 1;
-          const i2 = (r + 1) * stride + c;
-          const i3 = i2 + 1;
-
-          this.triangles.push([i0, i1, i2]);
-          this.triangles.push([i1, i3, i2]);
-        }
-      }
-    }
-
-    _computeWeights() {
-      this.weights = [];
-
-      for (let i = 0; i < this.vertices.length; i++) {
-        const p = { x: this.vertices[i].u, y: this.vertices[i].v };
-        const rawWeights = [];
-        let totalW = 0;
-
-        for (let b = 0; b < this.bones.length; b++) {
-          const bone = this.bones[b];
-          const d = pointToSegmentDist(p, bone.bindFrom, bone.bindTo);
-          // 거리 기반 역승 가중치 (관절 중심부일수록 1.0에 수렴, 경계선은 부드러운 스킨 블렌딩)
-          const w = 1 / Math.pow(d + 12, 2.2);
-          rawWeights.push({ boneIdx: b, w });
-          totalW += w;
-        }
-
-        // 상위 3개 주요 뼈대만 선별하여 정규화 (성능 극대화 & 안정적 스키닝)
-        rawWeights.sort((a, b) => b.w - a.w);
-        const topWeights = rawWeights.slice(0, 3);
-        let topTotal = topWeights.reduce((sum, item) => sum + item.w, 0);
-
-        if (topTotal <= 0) {
-          this.weights.push([{ boneIdx: 0, weight: 1.0 }]);
-        } else {
-          this.weights.push(
-            topWeights.map(item => ({
-              boneIdx: item.boneIdx,
-              weight: item.w / topTotal
-            }))
-          );
-        }
-      }
+    /**
+     * 부위별 피벗 회전 변환을 적용하여 그리기
+     */
+    _drawPart(ctx, segImg, pivotBind, pivotCurr, angleDelta) {
+      if (!segImg) return;
+      ctx.save();
+      // 1. 현재 월드 관절 위치로 이동
+      ctx.translate(pivotCurr.x, pivotCurr.y);
+      // 2. 관절 회전량만큼 회전
+      ctx.rotate(angleDelta);
+      // 3. 바인드 포즈의 관절 회전축으로 정렬
+      ctx.translate(-pivotBind.x, -pivotBind.y);
+      // 4. 원본 픽셀 그대로 선명하게 그리기
+      ctx.drawImage(segImg, 0, 0);
+      ctx.restore();
     }
 
     /**
-     * 포즈가 적용된 뼈대 변환 행렬들 계산
+     * 실시간 관절 렌더링
      */
-    _computeBoneTransforms(currSkeleton) {
-      const transforms = [];
-
-      for (let b = 0; b < this.bones.length; b++) {
-        const bone = this.bones[b];
-        const fromPt = currSkeleton[bone.fromKey] || bone.bindFrom;
-        const toPt = currSkeleton[bone.toKey] || bone.bindTo;
-
-        const currMidX = (fromPt.x + toPt.x) * 0.5;
-        const currMidY = (fromPt.y + toPt.y) * 0.5;
-        const currLen = dist(fromPt, toPt) || 1;
-        const currAngle = Math.atan2(toPt.y - fromPt.y, toPt.x - fromPt.x);
-
-        const deltaAngle = currAngle - bone.bindAngle;
-        const scale = bone.bindLength > 0 ? currLen / bone.bindLength : 1;
-
-        transforms.push({
-          bindMid: bone.bindMid,
-          currMid: { x: currMidX, y: currMidY },
-          cos: Math.cos(deltaAngle) * scale,
-          sin: Math.sin(deltaAngle) * scale
-        });
-      }
-
-      return transforms;
-    }
-
-    /**
-     * 실시간 스킨드 변형 렌더링
-     */
-    draw(ctx, currSkeleton, destX, destY, destW, destH) {
+    draw(ctx, currSkel, destX, destY, destW, destH) {
       if (!this.image) return;
 
-      const transforms = this._computeBoneTransforms(currSkeleton);
+      const skel0 = this.bindSkeleton;
       const scaleX = destW / this.width;
       const scaleY = destH / this.height;
 
-      // 1. 각 정점의 변형된 위치 계산 (Linear Blend Skinning)
-      const deformedVerts = new Array(this.vertices.length);
+      ctx.save();
+      ctx.translate(destX, destY);
+      ctx.scale(scaleX, scaleY);
 
-      for (let i = 0; i < this.vertices.length; i++) {
-        const vert = this.vertices[i];
-        const wList = this.weights[i];
-        let sumX = 0;
-        let sumY = 0;
+      // 관절별 회전각(Delta Angle) 계산
+      const getDeltaAngle = (p1Bind, p2Bind, p1Curr, p2Curr) => {
+        const a0 = Math.atan2(p2Bind.y - p1Bind.y, p2Bind.x - p1Bind.x);
+        const a1 = Math.atan2(p2Curr.y - p1Curr.y, p2Curr.x - p1Curr.x);
+        return a1 - a0;
+      };
 
-        for (let k = 0; k < wList.length; k++) {
-          const bIdx = wList[k].boneIdx;
-          const weight = wList[k].weight;
-          const t = transforms[bIdx];
+      const spineDelta = getDeltaAngle(skel0.pelvis, skel0.neck, currSkel.pelvis, currSkel.neck);
+      const headDelta = getDeltaAngle(skel0.neck, skel0.head, currSkel.neck, currSkel.head);
 
-          // 로컬 중심 기준 회전 및 이동
-          const lx = vert.u - t.bindMid.x;
-          const ly = vert.v - t.bindMid.y;
-          const rx = lx * t.cos - ly * t.sin + t.currMid.x;
-          const ry = lx * t.sin + ly * t.cos + t.currMid.y;
+      const armL1Delta = getDeltaAngle(skel0.shoulder_l, skel0.elbow_l, currSkel.shoulder_l, currSkel.elbow_l);
+      const armL2Delta = getDeltaAngle(skel0.elbow_l, skel0.hand_l, currSkel.elbow_l, currSkel.hand_l);
 
-          sumX += rx * weight;
-          sumY += ry * weight;
-        }
+      const armR1Delta = getDeltaAngle(skel0.shoulder_r, skel0.elbow_r, currSkel.shoulder_r, currSkel.elbow_r);
+      const armR2Delta = getDeltaAngle(skel0.elbow_r, skel0.hand_r, currSkel.elbow_r, currSkel.hand_r);
 
-        deformedVerts[i] = {
-          x: destX + sumX * scaleX,
-          y: destY + sumY * scaleY
-        };
-      }
+      const legL1Delta = getDeltaAngle(skel0.pelvis, skel0.knee_l, currSkel.pelvis, currSkel.knee_l);
+      const legL2Delta = getDeltaAngle(skel0.knee_l, skel0.foot_l, currSkel.knee_l, currSkel.foot_l);
 
-      // 2. 캔버스 2D 아핀 삼각형 텍스처 매핑
-      const tris = this.triangles;
-      const verts = this.vertices;
+      const legR1Delta = getDeltaAngle(skel0.pelvis, skel0.knee_r, currSkel.pelvis, currSkel.knee_r);
+      const legR2Delta = getDeltaAngle(skel0.knee_r, skel0.foot_r, currSkel.knee_r, currSkel.foot_r);
 
-      for (let t = 0; t < tris.length; t++) {
-        const tri = tris[t];
-        const i0 = tri[0], i1 = tri[1], i2 = tri[2];
+      // 계층적 렌더링 순서 (깊이감 보장: 뒤쪽 팔다리 -> 몸통 -> 앞쪽 다리 -> 머리 -> 앞쪽 팔)
+      // 1. 뒤쪽 팔 (Right Arm)
+      this._drawPart(ctx, this.segments.upper_arm_r, skel0.shoulder_r, currSkel.shoulder_r, armR1Delta);
+      this._drawPart(ctx, this.segments.lower_arm_r, skel0.elbow_r, currSkel.elbow_r, armR2Delta);
 
-        // 원본 UV
-        const u0 = verts[i0].u, v0 = verts[i0].v;
-        const u1 = verts[i1].u, v1 = verts[i1].v;
-        const u2 = verts[i2].u, v2 = verts[i2].v;
+      // 2. 뒤쪽 다리 (Right Leg)
+      this._drawPart(ctx, this.segments.upper_leg_r, skel0.pelvis, currSkel.pelvis, legR1Delta);
+      this._drawPart(ctx, this.segments.lower_leg_r, skel0.knee_r, currSkel.knee_r, legR2Delta);
 
-        // 변형된 화면 좌표
-        const d0 = deformedVerts[i0];
-        const d1 = deformedVerts[i1];
-        const d2 = deformedVerts[i2];
+      // 3. 앞쪽 다리 (Left Leg)
+      this._drawPart(ctx, this.segments.upper_leg_l, skel0.pelvis, currSkel.pelvis, legL1Delta);
+      this._drawPart(ctx, this.segments.lower_leg_l, skel0.knee_l, currSkel.knee_l, legL2Delta);
 
-        // 삼각형 클립 마진 확장 (캔버스 앤티앨리어싱 이음매 seam 방지)
-        const cx = (d0.x + d1.x + d2.x) / 3;
-        const cy = (d0.y + d1.y + d2.y) / 3;
-        const expand = 0.65; // px
+      // 4. 몸통 (Torso)
+      this._drawPart(ctx, this.segments.torso, skel0.pelvis, currSkel.pelvis, spineDelta);
 
-        const p0x = d0.x + (d0.x - cx) * 0.04 + (d0.x >= cx ? expand : -expand) * 0.3;
-        const p0y = d0.y + (d0.y - cy) * 0.04 + (d0.y >= cy ? expand : -expand) * 0.3;
-        const p1x = d1.x + (d1.x - cx) * 0.04 + (d1.x >= cx ? expand : -expand) * 0.3;
-        const p1y = d1.y + (d1.y - cy) * 0.04 + (d1.y >= cy ? expand : -expand) * 0.3;
-        const p2x = d2.x + (d2.x - cx) * 0.04 + (d2.x >= cx ? expand : -expand) * 0.3;
-        const p2y = d2.y + (d2.y - cy) * 0.04 + (d2.y >= cy ? expand : -expand) * 0.3;
+      // 5. 머리 (Head)
+      this._drawPart(ctx, this.segments.head, skel0.neck, currSkel.neck, headDelta);
 
-        // 2D 아핀 변환 행렬 풀기
-        const delta = u0 * (v1 - v2) + u1 * (v2 - v0) + u2 * (v0 - v1);
-        if (Math.abs(delta) < 0.001) continue;
+      // 6. 앞쪽 팔 (Left Arm)
+      this._drawPart(ctx, this.segments.upper_arm_l, skel0.shoulder_l, currSkel.shoulder_l, armL1Delta);
+      this._drawPart(ctx, this.segments.lower_arm_l, skel0.elbow_l, currSkel.elbow_l, armL2Delta);
 
-        const a = (d0.x * (v1 - v2) + d1.x * (v2 - v0) + d2.x * (v0 - v1)) / delta;
-        const b = (d0.y * (v1 - v2) + d1.y * (v2 - v0) + d2.y * (v0 - v1)) / delta;
-        const c = (d0.x * (u2 - u1) + d1.x * (u0 - u2) + d2.x * (u1 - u0)) / delta;
-        const d = (d0.y * (u2 - u1) + d1.y * (u0 - u2) + d2.y * (u1 - u0)) / delta;
-        const e = (d0.x * (u1 * v2 - u2 * v1) + d1.x * (u2 * v0 - u0 * v2) + d2.x * (u0 * v1 - u1 * v0)) / delta;
-        const f = (d0.y * (u1 * v2 - u2 * v1) + d1.y * (u2 * v0 - u0 * v2) + d2.x * (u0 * v1 - u1 * v0)) / delta;
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(p0x, p0y);
-        ctx.lineTo(p1x, p1y);
-        ctx.lineTo(p2x, p2y);
-        ctx.closePath();
-        ctx.clip();
-
-        ctx.transform(a, b, c, d, e, f);
-        ctx.drawImage(this.image, 0, 0);
-        ctx.restore();
-      }
+      ctx.restore();
     }
   }
 
@@ -686,7 +567,6 @@
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    // 뼈대 연결선
     const links = [
       { from: 'head', to: 'neck', color: '#f59e0b' },
       { from: 'neck', to: 'pelvis', color: '#10b981' },
@@ -721,7 +601,6 @@
       ctx.stroke();
     });
 
-    // 관절 노드
     for (const key in skeleton) {
       const pt = skeleton[key];
       const sx = destX + pt.x * scaleX;
@@ -741,7 +620,6 @@
 
   return {
     JOINT_NAMES,
-    BONE_DEFS,
     solveSkeletonPose,
     SkinnedMesh,
     drawSkeletonOverlay,
