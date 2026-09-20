@@ -39,6 +39,12 @@
       syncChannel.onmessage = (event) => {
         if (event.data && event.data.type === 'TEMPLATES_UPDATED' && event.data.templates) {
           renderAdminTemplates(event.data.templates);
+        } else if (event.data && event.data.type === 'BACKGROUNDS_UPDATED' && event.data.backgrounds) {
+          customBackgroundsList = event.data.backgrounds;
+          renderCustomBackgrounds();
+        } else if (event.data && event.data.type === 'THEME_CHANGED' && event.data.config) {
+          currentConfig = { ...currentConfig, ...event.data.config };
+          syncUI();
         }
       };
     } catch (e) {
@@ -63,6 +69,23 @@
           const data = JSON.parse(event.data);
           switch (data.type) {
             case 'INIT_STATE':
+              if (data.backgrounds) {
+                customBackgroundsList = data.backgrounds;
+                renderCustomBackgrounds();
+              }
+              if (data.config) {
+                currentConfig = { ...currentConfig, ...data.config };
+                syncUI();
+              }
+              break;
+
+            case 'BACKGROUNDS_UPDATED':
+              if (data.backgrounds) {
+                customBackgroundsList = data.backgrounds;
+                renderCustomBackgrounds();
+              }
+              break;
+
             case 'CONFIG_UPDATED':
             case 'THEME_CHANGED':
             case 'LIFECYCLE_UPDATED':
@@ -131,6 +154,8 @@
     if (currentConfig.customBackgroundUrl) {
       inputCustomUrl.value = currentConfig.customBackgroundUrl;
     }
+
+    renderCustomBackgrounds();
   }
 
   function updateLifetimeDisplay(sec) {
@@ -150,16 +175,27 @@
     });
   });
 
-  function applyTheme(theme, customUrl = '') {
+  function applyTheme(theme, customUrl = '', options = {}) {
     currentConfig.theme = theme;
-    if (customUrl) currentConfig.customBackgroundUrl = customUrl;
+    currentConfig.customBackgroundUrl = customUrl;
+    if (options.themeName !== undefined) currentConfig.themeName = options.themeName;
+    if (options.atmosphere !== undefined) currentConfig.atmosphere = options.atmosphere;
+    if (options.motionType !== undefined) currentConfig.motionType = options.motionType;
+
+    const payload = {
+      theme: theme,
+      customBackgroundUrl: customUrl,
+      themeName: currentConfig.themeName || '',
+      atmosphere: currentConfig.atmosphere || '',
+      motionType: currentConfig.motionType || ''
+    };
 
     // 1. BroadcastChannel (Instant sync across tabs/windows)
     if (syncChannel) {
       try {
         syncChannel.postMessage({
           type: 'THEME_CHANGED',
-          config: { theme: theme, customBackgroundUrl: customUrl }
+          config: payload
         });
       } catch (e) {}
     }
@@ -169,8 +205,7 @@
       try {
         ws.send(JSON.stringify({
           type: 'CHANGE_THEME',
-          theme: theme,
-          customBackgroundUrl: customUrl
+          ...payload
         }));
       } catch (e) {}
     }
@@ -179,8 +214,10 @@
     fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ theme: theme, customBackgroundUrl: customUrl })
+      body: JSON.stringify(payload)
     }).catch(e => console.warn('Config save notice:', e));
+
+    syncUI();
   }
 
   // ----------------------------------------------------
@@ -240,9 +277,289 @@
       alert('유효한 이미지 URL을 입력해주세요.');
       return;
     }
-    applyTheme('custom', url);
+    applyTheme('custom', url, { themeName: '직접 입력 URL 배경', atmosphere: 'sparkle' });
     alert('🖼️ 입력한 URL 이미지가 미디어월 배경으로 실시간 적용되었습니다!');
   });
+
+  // ----------------------------------------------------
+  // Section 3: Custom Background Upload & Theme Management (PNG/JPG)
+  // ----------------------------------------------------
+  const bgDropzone = document.getElementById('bg-dropzone');
+  const inputBgFile = document.getElementById('input-bg-file');
+  const bgDropzonePrompt = document.getElementById('bg-dropzone-prompt');
+  const bgDropzonePreview = document.getElementById('bg-dropzone-preview');
+  const imgBgPreview = document.getElementById('img-bg-preview');
+  const btnChangeBgFile = document.getElementById('btn-change-bg-file');
+  const badgeBgOptStatus = document.getElementById('badge-bg-opt-status');
+  const bgSizeInfo = document.getElementById('bg-size-info');
+  const bgResInfo = document.getElementById('bg-res-info');
+  const inputBgName = document.getElementById('input-bg-name');
+  const selectBgAtmosphere = document.getElementById('select-bg-atmosphere');
+  const selectBgMotion = document.getElementById('select-bg-motion');
+  const btnApplyBgNow = document.getElementById('btn-apply-bg-now');
+  const btnSaveBgTheme = document.getElementById('btn-save-bg-theme');
+  const badgeBgCount = document.getElementById('badge-bg-count');
+  const adminBgGrid = document.getElementById('admin-bg-grid');
+
+  let uploadedBgDataUrl = '';
+  let originalBgFile = null;
+  let customBackgroundsList = [];
+
+  const ATMOSPHERE_LABELS = {
+    sparkle: '✨ 골드 스타더스트',
+    gentle: '🍃 은은한 빛망울',
+    ocean: '🌊 해양 기포',
+    space: '🪐 우주 별빛',
+    forest: '🌲 숲속 반딧불이',
+    none: '🚫 파티클 없음'
+  };
+
+  const MOTION_LABELS = {
+    walk: '🚶 지면 보행',
+    swim: '🌊 해양 유영',
+    space: '✨ 무중력 부유',
+    dance_full: '💃 댄스'
+  };
+
+  if (bgDropzone && inputBgFile) {
+    bgDropzone.addEventListener('click', () => inputBgFile.click());
+
+    bgDropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      bgDropzone.classList.add('drag-over');
+    });
+
+    bgDropzone.addEventListener('dragleave', () => {
+      bgDropzone.classList.remove('drag-over');
+    });
+
+    bgDropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      bgDropzone.classList.remove('drag-over');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleBgFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    inputBgFile.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleBgFile(e.target.files[0]);
+      }
+    });
+
+    if (btnChangeBgFile) {
+      btnChangeBgFile.addEventListener('click', (e) => {
+        e.stopPropagation();
+        inputBgFile.click();
+      });
+    }
+  }
+
+  function handleBgFile(file) {
+    if (!file || !file.type.match(/^image\/(png|jpeg|webp)/)) {
+      alert('PNG, JPG, WEBP 이미지 파일만 업로드 가능합니다.');
+      return;
+    }
+
+    originalBgFile = file;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      optimizeBgImage(e.target.result, file.name, file.size);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function optimizeBgImage(dataUrl, fileName, originalSize) {
+    const img = new Image();
+    img.onload = () => {
+      const naturalW = img.naturalWidth || 1920;
+      const naturalH = img.naturalHeight || 1080;
+      const maxDim = 2560; // Max 2.5K width/height for fast canvas rendering
+      let targetW = naturalW;
+      let targetH = naturalH;
+
+      if (naturalW > maxDim || naturalH > maxDim) {
+        const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
+        targetW = Math.round(naturalW * ratio);
+        targetH = Math.round(naturalH * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+
+      const mimeType = (originalBgFile && originalBgFile.type === 'image/png') ? 'image/png' : 'image/jpeg';
+      const quality = mimeType === 'image/jpeg' ? 0.92 : undefined;
+      const optimizedDataUrl = canvas.toDataURL(mimeType, quality);
+      uploadedBgDataUrl = optimizedDataUrl;
+
+      imgBgPreview.src = optimizedDataUrl;
+      bgDropzonePrompt.style.display = 'none';
+      bgDropzonePreview.style.display = 'flex';
+
+      const optSize = Math.round((optimizedDataUrl.length * 3) / 4);
+      const origSizeKb = (originalSize / 1024).toFixed(0);
+      const optSizeKb = (optSize / 1024).toFixed(0);
+      bgSizeInfo.textContent = `${origSizeKb}KB → ${optSizeKb}KB 최적화`;
+      bgResInfo.textContent = `해상도: ${targetW} × ${targetH}px`;
+
+      if (!inputBgName.value.trim()) {
+        const cleanName = fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+        inputBgName.value = cleanName;
+      }
+
+      btnApplyBgNow.disabled = false;
+      btnSaveBgTheme.disabled = false;
+    };
+    img.src = dataUrl;
+  }
+
+  if (btnApplyBgNow) {
+    btnApplyBgNow.addEventListener('click', () => {
+      if (!uploadedBgDataUrl) return;
+      const name = inputBgName.value.trim() || '사용자 배경';
+      const atmosphere = selectBgAtmosphere.value;
+      const motion = selectBgMotion.value;
+
+      applyTheme('custom', uploadedBgDataUrl, {
+        themeName: name,
+        atmosphere: atmosphere,
+        motionType: motion
+      });
+      alert(`🚀 미디어월 배경에 '${name}' 이미지가 즉시 적용되었습니다!`);
+    });
+  }
+
+  if (btnSaveBgTheme) {
+    btnSaveBgTheme.addEventListener('click', async () => {
+      if (!uploadedBgDataUrl) return;
+      const name = inputBgName.value.trim() || '사용자 배경';
+      const atmosphere = selectBgAtmosphere.value;
+      const motion = selectBgMotion.value;
+
+      try {
+        btnSaveBgTheme.disabled = true;
+        btnSaveBgTheme.innerHTML = '<span>⏳</span> 등록 중...';
+
+        const res = await fetch('/api/backgrounds', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            dataUrl: uploadedBgDataUrl,
+            atmosphere,
+            motionType: motion
+          })
+        });
+
+        const data = await res.json();
+        if (data.success && data.backgrounds) {
+          customBackgroundsList = data.backgrounds;
+          renderCustomBackgrounds();
+          alert(`✅ 배경 테마 '${name}'이(가) 보관함에 성공적으로 등록되었습니다!`);
+        } else {
+          alert(data.error || '배경 테마 등록에 실패했습니다.');
+        }
+      } catch (e) {
+        console.error('Save background error:', e);
+        alert('배경 등록 중 네트워크 오류가 발생했습니다.');
+      } finally {
+        btnSaveBgTheme.disabled = false;
+        btnSaveBgTheme.innerHTML = '<span>💾</span> 배경 테마 보관함에 등록';
+      }
+    });
+  }
+
+  function renderCustomBackgrounds() {
+    if (!adminBgGrid) return;
+    adminBgGrid.innerHTML = '';
+    const count = customBackgroundsList.length;
+    if (badgeBgCount) badgeBgCount.textContent = `${count}개 등록됨`;
+
+    if (count === 0) {
+      adminBgGrid.innerHTML = `
+        <div class="bg-empty-placeholder">
+          <span>🌄 등록된 커스텀 배경 테마가 없습니다. 위에서 PNG/JPG 이미지를 업로드해 보세요!</span>
+        </div>
+      `;
+      return;
+    }
+
+    customBackgroundsList.forEach(bg => {
+      const card = document.createElement('div');
+      const isActive = (currentConfig.theme === 'custom' && currentConfig.customBackgroundUrl === bg.url);
+      card.className = `admin-bg-card ${isActive ? 'active-wall' : ''}`;
+
+      const atmoLabel = ATMOSPHERE_LABELS[bg.atmosphere] || '✨ 스타더스트';
+      const motionLabel = MOTION_LABELS[bg.motionType] || '🚶 지면 보행';
+
+      card.innerHTML = `
+        <div class="bg-card-thumb">
+          <img src="${bg.url}" alt="${bg.name}" loading="lazy">
+          ${isActive ? '<span class="bg-card-status-badge">송출 중</span>' : ''}
+        </div>
+        <div class="bg-card-info">
+          <div class="bg-card-title" title="${bg.name}">${bg.name}</div>
+          <div class="bg-card-meta">
+            <span>${atmoLabel}</span> • <span>${motionLabel}</span>
+          </div>
+        </div>
+        <div class="bg-card-actions">
+          <button class="btn-apply-bg-item ${isActive ? 'active' : ''}">
+            ${isActive ? '적용 중' : '즉시 적용'}
+          </button>
+          <button class="btn-delete-bg-item" title="배경 테마 삭제">🗑️</button>
+        </div>
+      `;
+
+      const btnApply = card.querySelector('.btn-apply-bg-item');
+      btnApply.addEventListener('click', () => {
+        applyTheme('custom', bg.url, {
+          themeName: bg.name,
+          atmosphere: bg.atmosphere,
+          motionType: bg.motionType
+        });
+        alert(`🖼️ 미디어월 배경이 '${bg.name}'(으)로 즉시 변경되었습니다!`);
+      });
+
+      const btnDelete = card.querySelector('.btn-delete-bg-item');
+      btnDelete.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(`'${bg.name}' 배경 테마를 정말 삭제하시겠습니까?`)) return;
+
+        try {
+          const res = await fetch(`/api/backgrounds/${bg.id}`, { method: 'DELETE' });
+          const data = await res.json();
+          if (data.success && data.backgrounds) {
+            customBackgroundsList = data.backgrounds;
+            renderCustomBackgrounds();
+          } else {
+            alert(data.error || '삭제 실패');
+          }
+        } catch (err) {
+          console.error('Delete bg error:', err);
+          alert('배경 삭제 중 오류가 발생했습니다.');
+        }
+      });
+
+      adminBgGrid.appendChild(card);
+    });
+  }
+
+  async function loadCustomBackgrounds() {
+    try {
+      const res = await fetch('/api/backgrounds');
+      const data = await res.json();
+      if (data.success && data.backgrounds) {
+        customBackgroundsList = data.backgrounds;
+        renderCustomBackgrounds();
+      }
+    } catch (e) {
+      console.warn('Could not load custom backgrounds:', e);
+    }
+  }
 
   // ----------------------------------------------------
   // PRD P0-3: Lifetime Control
@@ -1307,6 +1624,7 @@
   initWebSocket();
   searchImages('바다');
   fetchTemplates();
+  loadCustomBackgrounds();
 
 })();
 

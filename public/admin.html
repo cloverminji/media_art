@@ -100,6 +100,90 @@
         </div>
       </section>
 
+      <!-- Section 3: Custom Background Upload & Theme Management (PNG/JPG) -->
+      <section class="admin-card">
+        <div class="card-header">
+          <h2>🖼️ 배경 테마 파일 업로드 & 관리 (PNG / JPG)</h2>
+          <span class="card-sub">로컬 이미지 파일(PNG, JPG, WEBP)을 업로드하여 미디어월 배경 테마로 등록하고 실시간 송출합니다.</span>
+        </div>
+
+        <div class="bg-mgr-layout">
+          <!-- Upload Form -->
+          <div class="bg-upload-form">
+            <div class="upload-dropzone" id="bg-dropzone">
+              <input type="file" id="input-bg-file" accept="image/png,image/jpeg,image/webp" style="display: none;">
+              <div class="dropzone-content" id="bg-dropzone-prompt">
+                <span class="dropzone-icon">🌄</span>
+                <span class="dropzone-text">배경 이미지 파일 선택 (PNG / JPG / WEBP)</span>
+                <span class="dropzone-sub">클릭하거나 파일을 드래그하여 올려주세요 (대형 화면 권장: 1920×1080 Full HD 이상, 자동 최적화 지원)</span>
+              </div>
+              <div class="dropzone-preview" id="bg-dropzone-preview" style="display: none;">
+                <div class="bg-preview-stage">
+                  <img id="img-bg-preview" src="" alt="배경 미리보기">
+                </div>
+                <div class="preview-meta">
+                  <div class="preview-status-row">
+                    <span class="badge-tag success" id="badge-bg-opt-status">⚡ 고화질 최적화 완료</span>
+                    <span class="opt-size-info" id="bg-size-info">-</span>
+                  </div>
+                  <div class="bg-res-info" id="bg-res-info">해상도: -</div>
+                  <button type="button" class="btn-change-file" id="btn-change-bg-file">🔄 다른 파일 선택</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="input-bg-name">배경 테마 명칭:</label>
+                <input type="text" id="input-bg-name" placeholder="예: 성산일출봉의 노을, 우리 미술관 특별전시">
+              </div>
+
+              <div class="form-group">
+                <label for="select-bg-atmosphere">미디어아트 분위기/파티클 연출:</label>
+                <select id="select-bg-atmosphere" class="admin-select">
+                  <option value="sparkle" selected>✨ 찬란한 골드 스타더스트 (Gold Stardust)</option>
+                  <option value="gentle">🍃 은은한 빛망울 (Soft Ambient Glow)</option>
+                  <option value="ocean">🌊 해양 부유 기포 (Ocean Bubbles)</option>
+                  <option value="space">🪐 신비의 우주 별빛 (Cosmic Starlight)</option>
+                  <option value="forest">🌲 숲속 반딧불이 (Forest Fireflies)</option>
+                  <option value="none">🚫 파티클 없음 (Clean Background)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="select-bg-motion">캐릭터 기본 모션 권장:</label>
+                <select id="select-bg-motion" class="admin-select">
+                  <option value="walk" selected>🚶 지면 보행 (Walk)</option>
+                  <option value="swim">🌊 해양 유영 (Swim)</option>
+                  <option value="space">✨ 무중력 부유 (Float)</option>
+                  <option value="dance_full">💃 전신 댄스 (Dance)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="bg-action-buttons">
+              <button type="button" id="btn-apply-bg-now" class="btn-primary-action" disabled>
+                <span>🚀</span> 미디어월 배경으로 즉시 적용
+              </button>
+              <button type="button" id="btn-save-bg-theme" class="btn-save-theme" disabled>
+                <span>💾</span> 배경 테마 보관함에 등록
+              </button>
+            </div>
+          </div>
+
+          <!-- Current Custom Background Themes List -->
+          <div class="current-bg-section">
+            <div class="section-sub-header">
+              <h3>등록된 커스텀 배경 테마 목록</h3>
+              <span id="badge-bg-count" class="badge">0개 등록됨</span>
+            </div>
+            <div id="admin-bg-grid" class="admin-bg-grid">
+              <!-- Dynamically populated via JS -->
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Section 4: Custom Coloring Templates Management -->
       <section class="admin-card">
         <div class="card-header">

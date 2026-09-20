@@ -38,11 +38,25 @@ try {
 
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const TEMPLATES_FILE = path.join(DATA_DIR, 'templates.json');
+const BACKGROUNDS_FILE = path.join(DATA_DIR, 'backgrounds.json');
+
+// Upload directory for custom background images (PNG/JPG)
+const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads', 'backgrounds');
+try {
+  if (isFilesystemWritable && !fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Could not create backgrounds uploads dir:', e.message);
+}
 
 // Default Admin Config (Persistent)
 const DEFAULT_CONFIG = {
   theme: 'ocean', // 'ocean', 'space', 'forest', 'custom'
   customBackgroundUrl: '',
+  themeName: '',
+  atmosphere: 'ocean', // 'ocean', 'space', 'forest', 'sparkle', 'gentle', 'none'
+  motionType: 'walk',
   lifetimeSeconds: 180, // Default 3 minutes (PRD: 3~5 min, configurable)
   speedMultiplier: 1.0
 };
@@ -100,6 +114,30 @@ function saveCustomTemplates() {
     fs.writeFileSync(TEMPLATES_FILE, JSON.stringify(customTemplates, null, 2), 'utf-8');
   } catch (err) {
     console.warn('Could not write templates to disk (in-memory mode active):', err.message);
+  }
+}
+
+// ----------------------------------------------------
+// Custom Background Themes Storage (PNG/JPG Uploads)
+// ----------------------------------------------------
+let customBackgrounds = [];
+try {
+  const bundledBackgrounds = path.join(__dirname, 'data', 'backgrounds.json');
+  if (fs.existsSync(bundledBackgrounds)) {
+    customBackgrounds = JSON.parse(fs.readFileSync(bundledBackgrounds, 'utf-8'));
+  } else if (fs.existsSync(BACKGROUNDS_FILE)) {
+    customBackgrounds = JSON.parse(fs.readFileSync(BACKGROUNDS_FILE, 'utf-8'));
+  }
+} catch (err) {
+  console.warn('Backgrounds load fallback to empty array:', err.message);
+  customBackgrounds = [];
+}
+
+function saveCustomBackgrounds() {
+  try {
+    fs.writeFileSync(BACKGROUNDS_FILE, JSON.stringify(customBackgrounds, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Could not write backgrounds to disk (in-memory mode active):', err.message);
   }
 }
 
@@ -198,6 +236,93 @@ app.delete('/api/templates/:id', (req, res) => {
 });
 
 // ----------------------------------------------------
+// Custom Background Themes API (PNG/JPG Uploads & Management)
+// ----------------------------------------------------
+app.get('/api/backgrounds', (req, res) => {
+  res.json({ success: true, backgrounds: customBackgrounds });
+});
+
+app.post('/api/backgrounds', (req, res) => {
+  const { name, dataUrl, atmosphere, motionType } = req.body || {};
+  if (!name || !dataUrl) {
+    return res.status(400).json({ success: false, error: '배경 명칭과 이미지 데이터가 필요합니다.' });
+  }
+
+  const id = 'bg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  let finalUrl = dataUrl;
+
+  // Try to write image file to disk if base64 data url is provided
+  if (isFilesystemWritable && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+    try {
+      const match = dataUrl.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+      if (match) {
+        let ext = match[1] === 'jpeg' ? 'jpg' : match[1];
+        if (ext === 'svg+xml') ext = 'svg';
+        const filename = `${id}.${ext}`;
+        const filePath = path.join(UPLOADS_DIR, filename);
+        const buffer = Buffer.from(match[2], 'base64');
+        fs.writeFileSync(filePath, buffer);
+        finalUrl = `/uploads/backgrounds/${filename}`;
+      }
+    } catch (err) {
+      console.warn('Could not write image to disk, falling back to dataUrl:', err.message);
+    }
+  }
+
+  const newBg = {
+    id,
+    name: name.trim(),
+    url: finalUrl,
+    atmosphere: atmosphere || 'sparkle',
+    motionType: motionType || 'walk',
+    createdAt: Date.now()
+  };
+
+  customBackgrounds.unshift(newBg);
+  saveCustomBackgrounds();
+
+  broadcast({
+    type: 'BACKGROUNDS_UPDATED',
+    backgrounds: customBackgrounds
+  });
+
+  res.json({ success: true, background: newBg, backgrounds: customBackgrounds });
+});
+
+app.delete('/api/backgrounds/:id', (req, res) => {
+  const { id } = req.params;
+  const initialLen = customBackgrounds.length;
+  const targetBg = customBackgrounds.find(b => b.id === id);
+
+  customBackgrounds = customBackgrounds.filter(b => b.id !== id);
+
+  if (customBackgrounds.length === initialLen) {
+    return res.status(404).json({ success: false, error: '해당 배경 테마를 찾을 수 없습니다.' });
+  }
+
+  // If local file was saved, remove it
+  if (targetBg && targetBg.url && targetBg.url.startsWith('/uploads/backgrounds/')) {
+    try {
+      const localFilePath = path.join(__dirname, 'public', targetBg.url.replace(/^\//, ''));
+      if (fs.existsSync(localFilePath)) {
+        fs.unlinkSync(localFilePath);
+      }
+    } catch (e) {
+      console.warn('Could not remove file on delete:', e.message);
+    }
+  }
+
+  saveCustomBackgrounds();
+
+  broadcast({
+    type: 'BACKGROUNDS_UPDATED',
+    backgrounds: customBackgrounds
+  });
+
+  res.json({ success: true, backgrounds: customBackgrounds });
+});
+
+// ----------------------------------------------------
 // Character Spawning & Real-Time Sync API (Vercel Serverless + REST Fallback)
 // ----------------------------------------------------
 let spawnedCharactersQueue = [];
@@ -255,8 +380,14 @@ app.post('/api/action', (req, res) => {
   if (action === 'CLEAR_ALL_CHARACTERS') {
     broadcast({ type: 'CLEAR_ALL_CHARACTERS' });
   } else if (action === 'SET_THEME' && payload && payload.theme) {
-    saveConfig({ theme: payload.theme });
-    broadcast({ type: 'THEME_CHANGED', theme: payload.theme });
+    saveConfig({
+      theme: payload.theme,
+      customBackgroundUrl: payload.customBackgroundUrl || '',
+      themeName: payload.themeName || '',
+      atmosphere: payload.atmosphere || '',
+      motionType: payload.motionType || ''
+    });
+    broadcast({ type: 'THEME_CHANGED', config: currentConfig });
   } else if (action === 'UPDATE_LIFECYCLE' && payload && payload.lifetimeSeconds) {
     saveConfig({ lifetimeSeconds: Number(payload.lifetimeSeconds) });
     broadcast({ type: 'LIFECYCLE_UPDATED', config: currentConfig });
@@ -332,7 +463,8 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({
     type: 'INIT_STATE',
     config: currentConfig,
-    templates: getCombinedTemplates()
+    templates: getCombinedTemplates(),
+    backgrounds: customBackgrounds
   }));
 
   ws.on('message', (raw) => {
@@ -369,7 +501,10 @@ wss.on('connection', (ws) => {
           // PRD P0-2: Master Admin changes theme/background
           saveConfig({
             theme: data.theme,
-            customBackgroundUrl: data.customBackgroundUrl || ''
+            customBackgroundUrl: data.customBackgroundUrl || '',
+            themeName: data.themeName || '',
+            atmosphere: data.atmosphere || '',
+            motionType: data.motionType || ''
           });
           broadcast({
             type: 'THEME_CHANGED',

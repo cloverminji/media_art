@@ -59,6 +59,8 @@ body.theme-forest .bg-layer {
 body.theme-custom .bg-layer {
   background-size: cover;
   background-position: center;
+  background-repeat: no-repeat;
+  background-color: #030712;
 }
 
 .bg-overlay {

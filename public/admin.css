@@ -495,6 +495,239 @@ html, body {
 }
 
 /* ----------------------------------------------------
+   Section 3: Custom Background Themes Manager
+   ---------------------------------------------------- */
+.bg-mgr-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.bg-upload-form {
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.bg-preview-stage {
+  width: 160px;
+  height: 90px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.bg-preview-stage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bg-res-info {
+  font-size: 0.78rem;
+  color: var(--primary);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.bg-action-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.btn-save-theme {
+  flex: 1;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
+  border: none;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+  transition: all 0.2s ease;
+}
+
+.btn-save-theme:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+.btn-save-theme:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.current-bg-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-bg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.admin-bg-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  transition: all 0.25s ease;
+  overflow: hidden;
+}
+
+.admin-bg-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(56, 189, 248, 0.5);
+  transform: translateY(-2px);
+}
+
+.admin-bg-card.active-wall {
+  border-color: var(--primary);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.bg-card-thumb {
+  width: 100%;
+  height: 120px;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  background: #0b1120;
+}
+
+.bg-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.admin-bg-card:hover .bg-card-thumb img {
+  transform: scale(1.05);
+}
+
+.bg-card-status-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(16, 185, 129, 0.9);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.bg-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bg-card-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bg-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.bg-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.btn-apply-bg-item {
+  flex: 1;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-apply-bg-item:hover {
+  background: #0284c7;
+  color: #fff;
+}
+
+.btn-apply-bg-item.active {
+  background: #10b981;
+  border-color: #10b981;
+  color: #fff;
+  cursor: default;
+}
+
+.btn-delete-bg-item {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-delete-bg-item:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.bg-empty-placeholder {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+/* ----------------------------------------------------
    Section 4: Custom Coloring Templates Management
    ---------------------------------------------------- */
 .template-mgr-layout {

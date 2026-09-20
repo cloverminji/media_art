@@ -21,6 +21,8 @@
   let characters = [];
   let ambientParticles = [];
   let currentTheme = 'ocean';
+  let currentAtmosphere = 'ocean';
+  let currentThemeMotion = 'swim';
   let defaultLifetime = 180; // 3 minutes
   let lastTime = performance.now();
   let frameCount = 0;
@@ -48,7 +50,7 @@
     ocean: '바다 (Ocean)',
     space: '우주 (Cosmos)',
     forest: '신비의 숲 (Forest)',
-    custom: '웹 소싱 배경 (Custom)'
+    custom: '커스텀 배경 (Custom)'
   };
 
   function applyTheme(config) {
@@ -61,7 +63,26 @@
       bgLayer.style.backgroundImage = '';
     }
 
-    hudTheme.textContent = THEME_NAMES[currentTheme] || currentTheme;
+    if (config.atmosphere) {
+      currentAtmosphere = config.atmosphere;
+    } else if (currentTheme === 'space') {
+      currentAtmosphere = 'space';
+    } else if (currentTheme === 'forest') {
+      currentAtmosphere = 'forest';
+    } else if (currentTheme === 'ocean') {
+      currentAtmosphere = 'ocean';
+    } else {
+      currentAtmosphere = 'sparkle';
+    }
+
+    if (config.motionType) {
+      currentThemeMotion = config.motionType;
+    } else {
+      currentThemeMotion = (currentTheme === 'ocean' ? 'swim' : (currentTheme === 'space' ? 'space' : 'walk'));
+    }
+
+    const displayName = config.themeName || THEME_NAMES[currentTheme] || currentTheme;
+    hudTheme.textContent = displayName;
     initAmbientParticles();
   }
 
@@ -80,7 +101,8 @@
   // ----------------------------------------------------
   function initAmbientParticles() {
     ambientParticles = [];
-    const count = currentTheme === 'space' ? 80 : 45;
+    if (currentAtmosphere === 'none') return;
+    const count = currentAtmosphere === 'space' ? 80 : (currentAtmosphere === 'sparkle' ? 65 : 45);
     for (let i = 0; i < count; i++) {
       ambientParticles.push(createAmbientParticle(true));
     }
@@ -89,16 +111,32 @@
   function createAmbientParticle(randomY = false) {
     const w = window.innerWidth;
     const h = window.innerHeight;
+
+    let speedY = (Math.random() - 0.5) * 0.6;
+    let color = 'rgba(253, 224, 71,';
+
+    if (currentAtmosphere === 'ocean') {
+      speedY = -(Math.random() * 1.5 + 0.5);
+      color = 'rgba(125, 211, 252,';
+    } else if (currentAtmosphere === 'space') {
+      color = Math.random() > 0.5 ? 'rgba(236, 72, 153,' : 'rgba(147, 197, 253,';
+    } else if (currentAtmosphere === 'forest') {
+      color = 'rgba(134, 239, 172,';
+    } else if (currentAtmosphere === 'sparkle') {
+      color = Math.random() > 0.4 ? 'rgba(253, 224, 71,' : 'rgba(251, 191, 36,';
+    } else if (currentAtmosphere === 'gentle') {
+      color = 'rgba(254, 243, 199,';
+    }
+
     return {
       x: Math.random() * w,
-      y: randomY ? Math.random() * h : (currentTheme === 'ocean' ? h + 20 : Math.random() * h),
-      size: Math.random() * 4 + 1.5,
-      speedY: currentTheme === 'ocean' ? -(Math.random() * 1.5 + 0.5) : (Math.random() - 0.5) * 0.6,
+      y: randomY ? Math.random() * h : (currentAtmosphere === 'ocean' ? h + 20 : Math.random() * h),
+      size: currentAtmosphere === 'sparkle' ? Math.random() * 3 + 1.2 : Math.random() * 4 + 1.5,
+      speedY: speedY,
       speedX: (Math.random() - 0.5) * 0.8,
-      alpha: Math.random() * 0.6 + 0.2,
+      alpha: Math.random() * 0.6 + 0.25,
       pulse: Math.random() * Math.PI,
-      color: currentTheme === 'ocean' ? 'rgba(125, 211, 252,' :
-             currentTheme === 'space' ? 'rgba(236, 72, 153,' : 'rgba(134, 239, 172,'
+      color: color
     };
   }
 
@@ -137,7 +175,7 @@
       this.mediaType = data.mediaType || (typeof data.dataUrl === 'string' && (data.dataUrl.startsWith('data:video/') || data.dataUrl.includes('.mp4')) ? 'video' : 'image');
       this.isVideo = (this.mediaType === 'video') || !!this.videoUrl;
       this.skeleton = data.skeleton || null;
-      this.motionType = data.motionType || (currentTheme === 'ocean' ? 'swim' : 'walk');
+      this.motionType = data.motionType || (currentTheme === 'ocean' ? 'swim' : (currentTheme === 'space' ? 'space' : currentThemeMotion || 'walk'));
       this.lifetimeSeconds = data.lifetimeSeconds || defaultLifetime;
       this.age = 0; // seconds elapsed
       this.state = 'active'; // 'spawning', 'active', 'fading', 'dead'
@@ -560,7 +598,8 @@
         // PRD P0-2: Real-time theme change without reload
         if (data.config) {
           applyTheme(data.config);
-          showToast(`테마가 '${THEME_NAMES[data.config.theme] || data.config.theme}'(으)로 변경되었습니다.`);
+          const themeTitle = data.config.themeName || THEME_NAMES[data.config.theme] || data.config.theme;
+          showToast(`테마가 '${themeTitle}'(으)로 변경되었습니다.`);
         } else if (data.theme) {
           applyTheme({ theme: data.theme });
           showToast(`테마가 '${THEME_NAMES[data.theme] || data.theme}'(으)로 변경되었습니다.`);
