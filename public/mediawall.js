@@ -23,7 +23,8 @@
   let currentTheme = 'ocean';
   let currentAtmosphere = 'ocean';
   let currentThemeMotion = 'swim';
-  let defaultLifetime = 180; // 3 minutes
+  let defaultLifetime = 300; // 5 minutes default
+  let maxCharacters = 35; // Smart FIFO Safety Cap (10~60 configurable)
   let lastTime = performance.now();
   let frameCount = 0;
   let fpsTimer = 0;
@@ -645,7 +646,8 @@
     switch (data.type) {
       case 'INIT_STATE':
         if (data.config) {
-          defaultLifetime = data.config.lifetimeSeconds || 180;
+          defaultLifetime = Number(data.config.lifetimeSeconds) || 300;
+          if (data.config.maxCharacters) maxCharacters = Number(data.config.maxCharacters);
           applyTheme(data.config);
         }
         break;
@@ -657,6 +659,17 @@
           const cid = charData.id || ('char_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
           if (spawnedCharIds.has(cid)) return; // Prevent duplicate spawn across multiple channels
           spawnedCharIds.add(cid);
+
+          // 스마트 FIFO 안전 캡: 활성 캐릭터 수가 최대 상한선 이상이면 가장 오래 머문 캐릭터부터 3초 페이드아웃 퇴장
+          const activeChars = characters.filter(c => c.state === 'active');
+          if (activeChars.length >= maxCharacters) {
+            activeChars.sort((a, b) => b.age - a.age);
+            const oldest = activeChars[0];
+            if (oldest) {
+              oldest.state = 'fading';
+              oldest.age = Math.max(oldest.age, oldest.lifetimeSeconds - 3);
+            }
+          }
 
           const char = new LiveCharacter({
             ...charData,
@@ -672,6 +685,8 @@
       case 'CONFIG_UPDATED':
         // PRD P0-2: Real-time theme change without reload
         if (data.config) {
+          if (data.config.lifetimeSeconds) defaultLifetime = Number(data.config.lifetimeSeconds);
+          if (data.config.maxCharacters) maxCharacters = Number(data.config.maxCharacters);
           applyTheme(data.config);
           const themeTitle = data.config.themeName || THEME_NAMES[data.config.theme] || data.config.theme;
           showToast(`테마가 '${themeTitle}'(으)로 변경되었습니다.`);
@@ -684,11 +699,17 @@
       case 'LIFECYCLE_UPDATED':
         const newLifetime = (data.config && data.config.lifetimeSeconds) || data.lifetimeSeconds;
         if (newLifetime) {
-          defaultLifetime = newLifetime;
+          defaultLifetime = Number(newLifetime);
           characters.forEach(c => {
             c.lifetimeSeconds = defaultLifetime;
           });
-          showToast(`캐릭터 수명이 ${defaultLifetime}초로 업데이트되었습니다.`);
+          const minDisplay = Math.floor(defaultLifetime / 60);
+          showToast(`캐릭터 체류 수명이 ${minDisplay}분으로 업데이트되었습니다.`);
+        }
+        const newMaxChars = (data.config && data.config.maxCharacters) || data.maxCharacters;
+        if (newMaxChars) {
+          maxCharacters = Number(newMaxChars);
+          showToast(`화면 내 최대 동시 캐릭터가 ${maxCharacters}마리로 조정되었습니다.`);
         }
         break;
 

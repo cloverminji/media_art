@@ -20,6 +20,8 @@
   const valLifetime = document.getElementById('val-lifetime');
   const valLifetimeMin = document.getElementById('val-lifetime-min');
   const presetButtons = document.querySelectorAll('.preset-btn');
+  const rangeMaxChars = document.getElementById('range-max-chars');
+  const valMaxChars = document.getElementById('val-max-chars');
 
   const metricActiveCount = document.getElementById('metric-active-count');
   const metricFps = document.getElementById('metric-fps');
@@ -29,7 +31,8 @@
   let currentConfig = {
     theme: 'ocean',
     customBackgroundUrl: '',
-    lifetimeSeconds: 180
+    lifetimeSeconds: 300,
+    maxCharacters: 35
   };
 
   let syncChannel = null;
@@ -137,7 +140,7 @@
       }
     });
 
-    // Sync Lifetime
+    // Sync Lifetime & Capacity
     if (currentConfig.lifetimeSeconds) {
       rangeLifetime.value = currentConfig.lifetimeSeconds;
       updateLifetimeDisplay(currentConfig.lifetimeSeconds);
@@ -151,6 +154,11 @@
       });
     }
 
+    if (currentConfig.maxCharacters && rangeMaxChars) {
+      rangeMaxChars.value = currentConfig.maxCharacters;
+      if (valMaxChars) valMaxChars.textContent = currentConfig.maxCharacters;
+    }
+
     if (currentConfig.customBackgroundUrl) {
       inputCustomUrl.value = currentConfig.customBackgroundUrl;
     }
@@ -160,8 +168,9 @@
 
   function updateLifetimeDisplay(sec) {
     valLifetime.textContent = sec;
-    const min = (sec / 60).toFixed(1);
-    valLifetimeMin.textContent = `(${min}분)`;
+    const min = Math.floor(sec / 60);
+    const rem = sec % 60;
+    valLifetimeMin.textContent = rem > 0 ? `(${min}분 ${rem}초)` : `(${min}분)`;
   }
 
   // ----------------------------------------------------
@@ -615,6 +624,51 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'UPDATE_LIFECYCLE', payload: { lifetimeSeconds: val } })
+    }).catch(e => {});
+  }
+
+  // PRD P0-3: Max Characters Capacity Control (Smart FIFO Safety Cap)
+  if (rangeMaxChars) {
+    rangeMaxChars.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value, 10);
+      if (valMaxChars) valMaxChars.textContent = val;
+    });
+
+    rangeMaxChars.addEventListener('change', (e) => {
+      const val = parseInt(e.target.value, 10);
+      setMaxChars(val);
+    });
+  }
+
+  function setMaxChars(val) {
+    if (valMaxChars) valMaxChars.textContent = val;
+    currentConfig.maxCharacters = val;
+
+    // 1. BroadcastChannel
+    if (syncChannel) {
+      try {
+        syncChannel.postMessage({
+          type: 'LIFECYCLE_UPDATED',
+          maxCharacters: val
+        });
+      } catch (e) {}
+    }
+
+    // 2. WebSocket
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'UPDATE_MAX_CHARACTERS',
+          maxCharacters: val
+        }));
+      } catch (e) {}
+    }
+
+    // 3. HTTP REST API
+    fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'UPDATE_MAX_CHARACTERS', payload: { maxCharacters: val } })
     }).catch(e => {});
   }
 

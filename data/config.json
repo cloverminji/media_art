@@ -1,6 +1,9 @@
 {
-  "theme": "forest",
-  "customBackgroundUrl": "",
+  "theme": "custom",
+  "customBackgroundUrl": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80",
+  "themeName": "직접 입력 URL 배경",
+  "atmosphere": "sparkle",
+  "motionType": "walk",
   "lifetimeSeconds": 15,
   "speedMultiplier": 1
 }

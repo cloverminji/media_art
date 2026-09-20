@@ -356,18 +356,27 @@
           <div class="control-row">
             <label class="control-label">캐릭터 체류 수명 (Lifetime):</label>
             <div class="lifetime-display">
-              <span id="val-lifetime">180</span>초 <span class="sub-min" id="val-lifetime-min">(3분)</span>
+              <span id="val-lifetime">300</span>초 <span class="sub-min" id="val-lifetime-min">(5분)</span>
             </div>
           </div>
 
-          <input type="range" id="range-lifetime" min="10" max="300" step="10" value="180">
+          <input type="range" id="range-lifetime" min="300" max="1800" step="60" value="300">
 
           <div class="preset-buttons">
-            <button class="preset-btn" data-time="15">⚡ 15초 (빠른 테스트)</button>
-            <button class="preset-btn" data-time="30">⚡ 30초 (테스트)</button>
-            <button class="preset-btn active" data-time="180">🎯 3분 (PRD 기본 권장)</button>
-            <button class="preset-btn" data-time="300">🎯 5분 (PRD 최대)</button>
+            <button class="preset-btn active" data-time="300">🎯 5분 (기본 권장)</button>
+            <button class="preset-btn" data-time="600">⏱️ 10분</button>
+            <button class="preset-btn" data-time="900">⏱️ 15분</button>
+            <button class="preset-btn" data-time="1200">⏱️ 20분</button>
+            <button class="preset-btn" data-time="1800">🚀 30분 (최대 연장)</button>
           </div>
+
+          <div class="control-row" style="margin-top: 18px;">
+            <label class="control-label">화면 내 최대 동시 캐릭터 수 (스마트 FIFO 안전 캡):</label>
+            <div class="lifetime-display">
+              <span id="val-max-chars">35</span><span class="sub-min">마리</span>
+            </div>
+          </div>
+          <input type="range" id="range-max-chars" min="10" max="60" step="5" value="35">
         </div>
 
         <!-- Live Monitoring Dashboard -->
@@ -399,7 +408,7 @@
   <!-- External Parsers for ZIP and YAML -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
-  <script src="skeletal-mesh.js?v=2.1.0"></script>
-  <script src="admin.js?v=2.1.0"></script>
+  <script src="skeletal-mesh.js?v=2.2.0"></script>
+  <script src="admin.js?v=2.2.0"></script>
 </body>
 </html>

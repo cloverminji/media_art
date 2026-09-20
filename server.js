@@ -57,7 +57,8 @@ const DEFAULT_CONFIG = {
   themeName: '',
   atmosphere: 'ocean', // 'ocean', 'space', 'forest', 'sparkle', 'gentle', 'none'
   motionType: 'walk',
-  lifetimeSeconds: 180, // Default 3 minutes (PRD: 3~5 min, configurable)
+  lifetimeSeconds: 300, // Default 5 minutes (Configurable: 5~30 min)
+  maxCharacters: 35, // Default maximum concurrent characters on screen (FIFO safety cap)
   speedMultiplier: 1.0
 };
 
@@ -329,7 +330,8 @@ let spawnedCharactersQueue = [];
 
 function pruneSpawnQueue() {
   const now = Date.now();
-  spawnedCharactersQueue = spawnedCharactersQueue.filter(item => (now - item.timestamp) < 90000);
+  const queueMaxAge = Math.max(90000, ((currentConfig.lifetimeSeconds || 300) * 1000) + 10000);
+  spawnedCharactersQueue = spawnedCharactersQueue.filter(item => (now - item.timestamp) < queueMaxAge);
 }
 
 app.post('/api/spawn', (req, res) => {
@@ -388,8 +390,14 @@ app.post('/api/action', (req, res) => {
       motionType: payload.motionType || ''
     });
     broadcast({ type: 'THEME_CHANGED', config: currentConfig });
-  } else if (action === 'UPDATE_LIFECYCLE' && payload && payload.lifetimeSeconds) {
-    saveConfig({ lifetimeSeconds: Number(payload.lifetimeSeconds) });
+  } else if (action === 'UPDATE_LIFECYCLE' && payload) {
+    const updates = {};
+    if (payload.lifetimeSeconds) updates.lifetimeSeconds = Number(payload.lifetimeSeconds);
+    if (payload.maxCharacters) updates.maxCharacters = Number(payload.maxCharacters);
+    saveConfig(updates);
+    broadcast({ type: 'LIFECYCLE_UPDATED', config: currentConfig });
+  } else if (action === 'UPDATE_MAX_CHARACTERS' && payload && payload.maxCharacters) {
+    saveConfig({ maxCharacters: Number(payload.maxCharacters) });
     broadcast({ type: 'LIFECYCLE_UPDATED', config: currentConfig });
   }
   res.json({ success: true, config: currentConfig });
@@ -513,9 +521,17 @@ wss.on('connection', (ws) => {
           break;
 
         case 'UPDATE_LIFECYCLE':
-          // PRD P0-3: Lifetime setting
+        case 'UPDATE_MAX_CHARACTERS':
+          // PRD P0-3: Lifetime and capacity setting
+          const wsUpdates = {};
           if (data.lifetimeSeconds && !isNaN(data.lifetimeSeconds)) {
-            saveConfig({ lifetimeSeconds: Number(data.lifetimeSeconds) });
+            wsUpdates.lifetimeSeconds = Number(data.lifetimeSeconds);
+          }
+          if (data.maxCharacters && !isNaN(data.maxCharacters)) {
+            wsUpdates.maxCharacters = Number(data.maxCharacters);
+          }
+          if (Object.keys(wsUpdates).length > 0) {
+            saveConfig(wsUpdates);
             broadcast({
               type: 'LIFECYCLE_UPDATED',
               config: currentConfig
