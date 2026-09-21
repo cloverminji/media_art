@@ -471,7 +471,7 @@ function pruneSpawnQueue() {
   spawnedCharactersQueue = spawnedCharactersQueue.filter(item => (now - item.timestamp) < queueMaxAge);
 }
 
-app.post('/api/spawn', (req, res) => {
+app.post('/api/spawn', async (req, res) => {
   const characterData = req.body;
   if (!characterData || !characterData.dataUrl) {
     return res.status(400).json({ success: false, error: 'Character data with dataUrl is required' });
@@ -492,6 +492,16 @@ app.post('/api/spawn', (req, res) => {
 
   pruneSpawnQueue();
   spawnedCharactersQueue.push(charItem);
+  if (spawnedCharactersQueue.length > 35) {
+    spawnedCharactersQueue = spawnedCharactersQueue.slice(-35);
+  }
+
+  // Persist ephemeral active characters to Supabase for multi-lambda Vercel sync
+  if (supabase.isSupabaseConfigured()) {
+    supabase.dbSaveActiveCharacters(spawnedCharactersQueue).catch(err => {
+      console.warn('[Supabase] Could not save active characters cache:', err.message);
+    });
+  }
 
   // Broadcast to connected WebSocket clients (Local/VPS)
   broadcast({
@@ -502,8 +512,28 @@ app.post('/api/spawn', (req, res) => {
   res.json({ success: true, id: charItem.id });
 });
 
-app.get('/api/characters/poll', (req, res) => {
+app.get('/api/characters/poll', async (req, res) => {
   const since = parseInt(req.query.since, 10) || 0;
+
+  // Real-time serverless sync from Supabase
+  if (supabase.isSupabaseConfigured()) {
+    try {
+      const [dbCfg, dbChars] = await Promise.all([
+        supabase.dbGetConfig(),
+        supabase.dbGetActiveCharacters()
+      ]);
+      if (dbCfg && typeof dbCfg === 'object') {
+        currentConfig = { ...DEFAULT_CONFIG, ...dbCfg };
+      }
+      if (Array.isArray(dbChars) && dbChars.length > 0) {
+        const map = new Map();
+        spawnedCharactersQueue.forEach(c => map.set(c.id, c));
+        dbChars.forEach(c => map.set(c.id, c));
+        spawnedCharactersQueue = Array.from(map.values());
+      }
+    } catch (e) {}
+  }
+
   pruneSpawnQueue();
   const newCharacters = spawnedCharactersQueue.filter(item => item.timestamp > since);
   res.json({

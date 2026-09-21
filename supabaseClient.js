@@ -311,6 +311,42 @@ async function dbSaveConfig(config) {
   }
 }
 
+// ----------------------------------------------------
+// Database: Ephemeral Active Characters Cache (Vercel Serverless Sync)
+// ----------------------------------------------------
+async function dbGetActiveCharacters() {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const { data, error } = await supabase
+      .from('app_config')
+      .select('config')
+      .eq('id', 'active_characters')
+      .single();
+
+    if (error || !data || !data.config) return null;
+    return Array.isArray(data.config.list) ? data.config.list : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function dbSaveActiveCharacters(list) {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const { error } = await supabase
+      .from('app_config')
+      .upsert({
+        id: 'active_characters',
+        config: { list: (list || []).slice(0, 35) },
+        updated_at: new Date().toISOString()
+      });
+
+    return !error;
+  } catch (err) {
+    return false;
+  }
+}
+
 module.exports = {
   isSupabaseConfigured,
   getSupabaseClient,
@@ -322,5 +358,8 @@ module.exports = {
   dbAddBackground,
   dbDeleteBackground,
   dbGetConfig,
-  dbSaveConfig
+  dbSaveConfig,
+  dbGetActiveCharacters,
+  dbSaveActiveCharacters
 };
+

@@ -23,6 +23,7 @@
   let currentTheme = 'ocean';
   let currentAtmosphere = 'ocean';
   let currentThemeMotion = 'swim';
+  let currentCustomBgUrl = '';
   let defaultLifetime = 300; // 5 minutes default
   let maxCharacters = 35; // Smart FIFO Safety Cap (10~60 configurable)
   let lastTime = performance.now();
@@ -55,11 +56,13 @@
   };
 
   function applyTheme(config) {
+    if (!config) return;
     currentTheme = config.theme || 'ocean';
+    currentCustomBgUrl = config.customBackgroundUrl || '';
     document.body.className = `theme-${currentTheme}`;
 
-    if (currentTheme === 'custom' && config.customBackgroundUrl) {
-      bgLayer.style.backgroundImage = `url('${config.customBackgroundUrl}')`;
+    if (currentTheme === 'custom' && currentCustomBgUrl) {
+      bgLayer.style.backgroundImage = `url('${currentCustomBgUrl}')`;
     } else {
       bgLayer.style.backgroundImage = '';
     }
@@ -82,10 +85,45 @@
       currentThemeMotion = (currentTheme === 'ocean' ? 'swim' : (currentTheme === 'space' ? 'space' : 'walk'));
     }
 
+    if (config.lifetimeSeconds) {
+      defaultLifetime = Number(config.lifetimeSeconds);
+    }
+    if (config.maxCharacters) {
+      maxCharacters = Number(config.maxCharacters);
+    }
+
     const displayName = config.themeName || THEME_NAMES[currentTheme] || currentTheme;
     hudTheme.textContent = displayName;
     initAmbientParticles();
+
+    // Cache theme to localStorage for 0ms instant restoration on refresh
+    try {
+      localStorage.setItem('mediawall_cached_config', JSON.stringify(config));
+    } catch (e) {}
   }
+
+  function initCachedTheme() {
+    try {
+      const raw = localStorage.getItem('mediawall_cached_config');
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (cached) applyTheme(cached);
+      }
+    } catch (e) {}
+  }
+
+  async function fetchInitialConfig() {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const config = await res.json();
+        if (config) {
+          applyTheme(config);
+        }
+      }
+    } catch (e) {}
+  }
+
 
   function showToast(message) {
     const toast = document.createElement('div');
@@ -178,22 +216,23 @@
       this.skeleton = data.skeleton || null;
       this.motionType = data.motionType || (currentTheme === 'ocean' ? 'swim' : (currentTheme === 'space' ? 'space' : currentThemeMotion || 'walk'));
       this.lifetimeSeconds = data.lifetimeSeconds || defaultLifetime;
-      this.age = 0; // seconds elapsed
-      this.state = 'active'; // 'spawning', 'active', 'fading', 'dead'
-      this.opacity = 0; // starts with fade-in
+      this.age = typeof data.age === 'number' ? data.age : 0; // seconds elapsed
+      this.state = data.state || 'active'; // 'spawning', 'active', 'fading', 'dead'
+      this.opacity = data.opacity !== undefined ? data.opacity : (this.age > 0 ? 1 : 0);
 
       // Motion & physics bounds
       const w = window.innerWidth;
       const h = window.innerHeight;
-      this.x = Math.random() * (w - 300) + 150;
-      this.y = (this.motionType === 'swim' || currentTheme === 'ocean' || currentTheme === 'space') 
+      this.x = typeof data.x === 'number' ? data.x : (Math.random() * (w - 300) + 150);
+      this.y = typeof data.y === 'number' ? data.y : ((this.motionType === 'swim' || currentTheme === 'ocean' || currentTheme === 'space') 
                ? Math.random() * (h - 300) + 150 
-               : h - 180; // Walk along ground in forest/earth
-      this.baseY = this.y;
-      this.vx = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 55 + 45); // pixels per sec
-      this.vy = 0;
-      this.facing = this.vx >= 0 ? 1 : -1;
-      this.phase = Math.random() * Math.PI * 2;
+               : h - 180); // Walk along ground in forest/earth
+      this.baseY = typeof data.baseY === 'number' ? data.baseY : this.y;
+      this.vx = typeof data.vx === 'number' ? data.vx : ((Math.random() > 0.5 ? 1 : -1) * (Math.random() * 55 + 45)); // pixels per sec
+      this.vy = typeof data.vy === 'number' ? data.vy : 0;
+      this.facing = typeof data.facing === 'number' ? data.facing : (this.vx >= 0 ? 1 : -1);
+      this.phase = typeof data.phase === 'number' ? data.phase : (Math.random() * Math.PI * 2);
+
 
       this.imageLoaded = false;
       this.drawable = null;
@@ -632,8 +671,78 @@
 
     hudCount.textContent = characters.length;
 
+    // Periodically persist active characters to sessionStorage for seamless refresh restoration
+    persistActiveCharacters();
+
     requestAnimationFrame(animate);
   }
+
+  // ----------------------------------------------------
+  // Session Persistence for Seamless Refresh Restoration
+  // ----------------------------------------------------
+  let lastPersistTime = 0;
+  function persistActiveCharacters() {
+    const now = Date.now();
+    if (now - lastPersistTime < 1500) return; // Throttled to every 1.5s
+    lastPersistTime = now;
+
+    try {
+      const alive = characters.filter(c => c.state !== 'dead' && c.age < c.lifetimeSeconds);
+      if (alive.length === 0) {
+        sessionStorage.removeItem('mediawall_session_chars');
+        return;
+      }
+      const list = alive.slice(0, 35).map(c => ({
+        id: c.id,
+        dataUrl: c.dataUrl,
+        videoUrl: c.videoUrl,
+        mediaType: c.mediaType,
+        skeleton: c.skeleton,
+        templateId: c.templateId,
+        motionType: c.motionType,
+        lifetimeSeconds: c.lifetimeSeconds,
+        age: c.age,
+        x: c.x,
+        y: c.y,
+        baseY: c.baseY,
+        vx: c.vx,
+        facing: c.facing,
+        savedAt: now
+      }));
+      sessionStorage.setItem('mediawall_session_chars', JSON.stringify(list));
+    } catch (e) {}
+  }
+
+  function restoreSessionCharacters() {
+    try {
+      const raw = sessionStorage.getItem('mediawall_session_chars');
+      if (!raw) return;
+      const list = JSON.parse(raw);
+      const now = Date.now();
+      if (Array.isArray(list)) {
+        list.forEach(c => {
+          const elapsedWhileReloading = (now - (c.savedAt || now)) / 1000;
+          const currentAge = (c.age || 0) + elapsedWhileReloading;
+          const lifetime = c.lifetimeSeconds || defaultLifetime;
+          if (currentAge < lifetime - 2) {
+            const cid = c.id;
+            if (!spawnedCharIds.has(cid)) {
+              spawnedCharIds.add(cid);
+              const char = new LiveCharacter({
+                ...c,
+                age: currentAge,
+                opacity: 1
+              });
+              characters.push(char);
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[MediaWall] Session character restore warning:', e);
+    }
+  }
+
 
   // ----------------------------------------------------
   // Multi-Channel Real-Time Sync Engine (Vercel Serverless + Local WebSocket)
@@ -773,7 +882,8 @@
   }
 
   // 3. HTTP Polling Fallback (For Vercel Serverless where WebSocket is not supported)
-  let lastPollTime = Date.now();
+  // Query active characters from the last 5 minutes on initial boot so spawns from other devices are caught
+  let lastPollTime = Date.now() - ((defaultLifetime || 300) * 1000);
 
   async function pollServerForUpdates() {
     const isWsOpen = ws && ws.readyState === WebSocket.OPEN;
@@ -787,15 +897,22 @@
           if (data.serverTime) {
             lastPollTime = data.serverTime;
           }
-          if (data.config && data.config.theme && data.config.theme !== currentTheme) {
-            applyTheme(data.config);
+          if (data.config) {
+            const themeDiff = data.config.theme && data.config.theme !== currentTheme;
+            const bgDiff = (data.config.customBackgroundUrl || '') !== currentCustomBgUrl;
+            const atmoDiff = data.config.atmosphere && data.config.atmosphere !== currentAtmosphere;
+            if (themeDiff || bgDiff || atmoDiff) {
+              applyTheme(data.config);
+            }
           }
           if (Array.isArray(data.characters)) {
             data.characters.forEach(c => {
-              handleIncomingAction({
-                type: 'SPAWN_CHARACTER',
-                character: c
-              });
+              if (!spawnedCharIds.has(c.id)) {
+                handleIncomingAction({
+                  type: 'SPAWN_CHARACTER',
+                  character: c
+                });
+              }
             });
           }
         }
@@ -808,8 +925,11 @@
   }
 
   // Start System
+  initCachedTheme();
+  restoreSessionCharacters();
   initAmbientParticles();
   initWebSocket();
+  fetchInitialConfig();
   pollServerForUpdates();
   requestAnimationFrame(animate);
 
