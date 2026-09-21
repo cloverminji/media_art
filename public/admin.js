@@ -384,7 +384,8 @@
     img.onload = () => {
       const naturalW = img.naturalWidth || 1920;
       const naturalH = img.naturalHeight || 1080;
-      const maxDim = 2560; // Max 2.5K width/height for fast canvas rendering
+      // Target Full HD standard (1920x1080) for media walls while keeping payload well under Vercel 4.5MB limit
+      const maxDim = 1920;
       let targetW = naturalW;
       let targetH = naturalH;
 
@@ -398,11 +399,13 @@
       canvas.width = targetW;
       canvas.height = targetH;
       const ctx = canvas.getContext('2d');
+      // Fill solid background in case of transparent PNG
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, targetW, targetH);
       ctx.drawImage(img, 0, 0, targetW, targetH);
 
-      const mimeType = (originalBgFile && originalBgFile.type === 'image/png') ? 'image/png' : 'image/jpeg';
-      const quality = mimeType === 'image/jpeg' ? 0.92 : undefined;
-      const optimizedDataUrl = canvas.toDataURL(mimeType, quality);
+      // Convert backgrounds to high-quality JPEG (quality 0.88) to guarantee ultra-fast uploads and avoid Vercel 4.5MB limit
+      const optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.88);
       uploadedBgDataUrl = optimizedDataUrl;
 
       imgBgPreview.src = optimizedDataUrl;
@@ -412,7 +415,7 @@
       const optSize = Math.round((optimizedDataUrl.length * 3) / 4);
       const origSizeKb = (originalSize / 1024).toFixed(0);
       const optSizeKb = (optSize / 1024).toFixed(0);
-      bgSizeInfo.textContent = `${origSizeKb}KB → ${optSizeKb}KB 최적화`;
+      bgSizeInfo.textContent = `${origSizeKb}KB → ${optSizeKb}KB 초고화질 최적화`;
       bgResInfo.textContent = `해상도: ${targetW} × ${targetH}px`;
 
       if (!inputBgName.value.trim()) {
@@ -464,17 +467,26 @@
           })
         });
 
-        const data = await res.json();
-        if (data.success && data.backgrounds) {
+        let data;
+        try {
+          data = await res.json();
+        } catch (jsonErr) {
+          if (res.status === 413) {
+            throw new Error('배경 이미지 용량이 클라우드 한도(4.5MB)를 초과했습니다. 다른 이미지로 시도해주세요.');
+          }
+          throw new Error(`서버 응답 오류 (HTTP ${res.status}). Vercel 배포 후 재배포(Redeploy) 상태를 확인해주세요.`);
+        }
+
+        if (res.ok && data.success && data.backgrounds) {
           customBackgroundsList = data.backgrounds;
           renderCustomBackgrounds();
-          alert(`✅ 배경 테마 '${name}'이(가) 보관함에 성공적으로 등록되었습니다!`);
+          alert(`✅ 배경 테마 '${name}'이(가) 클라우드 보관함에 성공적으로 등록되었습니다!`);
         } else {
-          alert(data.error || '배경 테마 등록에 실패했습니다.');
+          alert('배경 등록 실패: ' + (data.error || '알 수 없는 오류'));
         }
       } catch (e) {
         console.error('Save background error:', e);
-        alert('배경 등록 중 네트워크 오류가 발생했습니다.');
+        alert(e.message || '배경 등록 중 네트워크 오류가 발생했습니다.');
       } finally {
         btnSaveBgTheme.disabled = false;
         btnSaveBgTheme.innerHTML = '<span>💾</span> 배경 테마 보관함에 등록';
