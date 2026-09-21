@@ -4,3 +4,8 @@ yarn-debug.log*
 yarn-error.log*
 .DS_Store
 Thumbs.db
+.env
+.env.*
+*.env
+media.env
+!.env.example

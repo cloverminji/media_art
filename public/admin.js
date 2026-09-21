@@ -1654,11 +1654,35 @@
     }
   });
 
+  async function checkDbStatus() {
+    const badge = document.getElementById('db-status-badge');
+    const text = document.getElementById('db-status-text');
+    if (!badge || !text) return;
+
+    try {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      if (data && data.supabase && data.supabase.configured) {
+        badge.className = 'status-indicator cloud-synced';
+        text.textContent = '☁️ Supabase 영구 동기화 중';
+        badge.title = `Supabase 클라우드 데이터베이스 및 스토리지 연동 완료 (${data.supabase.bucket} 버킷)`;
+      } else {
+        badge.className = 'status-indicator local-mode';
+        text.textContent = '💾 로컬 저장 모드';
+        badge.title = 'Supabase 키 미설정: 로컬 임시 저장소로 동작 중입니다.';
+      }
+    } catch (e) {
+      badge.className = 'status-indicator local-mode';
+      text.textContent = '💾 로컬 저장 모드';
+    }
+  }
+
   // Init
   initWebSocket();
   searchImages('바다');
   fetchTemplates();
   loadCustomBackgrounds();
+  checkDbStatus();
 
 })();
 

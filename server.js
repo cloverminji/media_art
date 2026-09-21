@@ -1,8 +1,10 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const { WebSocketServer, WebSocket } = require('ws');
+const supabase = require('./supabaseClient');
 
 const app = express();
 const server = http.createServer(app);
@@ -11,6 +13,7 @@ const wss = new WebSocketServer({ server });
 const os = require('os');
 
 const PORT = process.env.PORT || 3000;
+
 
 // Determine writable data directory (Handle Vercel / AWS Lambda read-only environment)
 let DATA_DIR = path.join(__dirname, 'data');
@@ -63,23 +66,99 @@ const DEFAULT_CONFIG = {
 };
 
 let currentConfig = { ...DEFAULT_CONFIG };
-try {
-  const bundledConfig = path.join(__dirname, 'data', 'config.json');
-  if (fs.existsSync(bundledConfig)) {
-    currentConfig = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(bundledConfig, 'utf-8')) };
-  } else if (fs.existsSync(CONFIG_FILE)) {
-    currentConfig = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')) };
+let customTemplates = [];
+let customBackgrounds = [];
+
+// Fallback: Local JSON loading
+function loadLocalData() {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      currentConfig = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')) };
+    } else {
+      const bundledConfig = path.join(__dirname, 'data', 'config.json');
+      if (fs.existsSync(bundledConfig)) {
+        currentConfig = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(bundledConfig, 'utf-8')) };
+      }
+    }
+  } catch (err) {
+    console.warn('Config load fallback to defaults:', err.message);
   }
-} catch (err) {
-  console.warn('Config load fallback to defaults:', err.message);
+
+  try {
+    if (fs.existsSync(TEMPLATES_FILE)) {
+      const loaded = JSON.parse(fs.readFileSync(TEMPLATES_FILE, 'utf-8'));
+      if (Array.isArray(loaded) && loaded.length > 0) customTemplates = loaded;
+    }
+    if (customTemplates.length === 0) {
+      const bundledTemplates = path.join(__dirname, 'data', 'templates.json');
+      if (fs.existsSync(bundledTemplates)) {
+        const bundled = JSON.parse(fs.readFileSync(bundledTemplates, 'utf-8'));
+        if (Array.isArray(bundled) && bundled.length > 0) customTemplates = bundled;
+      }
+    }
+  } catch (err) {
+    console.warn('Templates load fallback:', err.message);
+  }
+
+  try {
+    if (fs.existsSync(BACKGROUNDS_FILE)) {
+      const loaded = JSON.parse(fs.readFileSync(BACKGROUNDS_FILE, 'utf-8'));
+      if (Array.isArray(loaded) && loaded.length > 0) customBackgrounds = loaded;
+    }
+    if (customBackgrounds.length === 0) {
+      const bundledBackgrounds = path.join(__dirname, 'data', 'backgrounds.json');
+      if (fs.existsSync(bundledBackgrounds)) {
+        const bundled = JSON.parse(fs.readFileSync(bundledBackgrounds, 'utf-8'));
+        if (Array.isArray(bundled) && bundled.length > 0) customBackgrounds = bundled;
+      }
+    }
+  } catch (err) {
+    console.warn('Backgrounds load fallback:', err.message);
+  }
 }
 
-function saveConfig(newConfig) {
+loadLocalData();
+
+// Cloud: Sync from Supabase DB on startup (non-blocking)
+async function syncFromSupabase() {
+  if (!supabase.isSupabaseConfigured()) return;
+  try {
+    const [dbTmpls, dbBgs, dbCfg] = await Promise.all([
+      supabase.dbGetTemplates(),
+      supabase.dbGetBackgrounds(),
+      supabase.dbGetConfig()
+    ]);
+    if (Array.isArray(dbTmpls)) {
+      customTemplates = dbTmpls.filter(t => !t.isBuiltin);
+      saveCustomTemplates();
+    }
+    if (Array.isArray(dbBgs)) {
+      customBackgrounds = dbBgs;
+      saveCustomBackgrounds();
+    }
+    if (dbCfg && typeof dbCfg === 'object') {
+      currentConfig = { ...DEFAULT_CONFIG, ...dbCfg };
+      saveConfig(currentConfig, false);
+    }
+    console.log(`[Supabase] Synced: ${customTemplates.length} templates, ${customBackgrounds.length} backgrounds from Cloud DB.`);
+  } catch (e) {
+    console.warn('[Supabase] Initial sync warning:', e.message);
+  }
+}
+
+syncFromSupabase();
+
+function saveConfig(newConfig, syncToSupabase = true) {
   currentConfig = { ...currentConfig, ...newConfig };
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(currentConfig, null, 2), 'utf-8');
   } catch (err) {
     console.warn('Could not write config to disk (in-memory mode active):', err.message);
+  }
+  if (syncToSupabase && supabase.isSupabaseConfigured()) {
+    supabase.dbSaveConfig(currentConfig).catch(err => {
+      console.warn('[Supabase] Failed to persist config to DB:', err.message);
+    });
   }
 }
 
@@ -92,19 +171,6 @@ const DEFAULT_TEMPLATES = [
   { id: 'astronaut', name: '우주 탐험가', icon: '🧑‍🚀', motionType: 'walk', isBuiltin: true },
   { id: 'turtle', name: '바다 거북이', icon: '🐢', motionType: 'swim', isBuiltin: true }
 ];
-
-let customTemplates = [];
-try {
-  const bundledTemplates = path.join(__dirname, 'data', 'templates.json');
-  if (fs.existsSync(bundledTemplates)) {
-    customTemplates = JSON.parse(fs.readFileSync(bundledTemplates, 'utf-8'));
-  } else if (fs.existsSync(TEMPLATES_FILE)) {
-    customTemplates = JSON.parse(fs.readFileSync(TEMPLATES_FILE, 'utf-8'));
-  }
-} catch (err) {
-  console.warn('Templates load fallback to empty custom array:', err.message);
-  customTemplates = [];
-}
 
 function getCombinedTemplates() {
   return [...DEFAULT_TEMPLATES, ...customTemplates];
@@ -121,19 +187,6 @@ function saveCustomTemplates() {
 // ----------------------------------------------------
 // Custom Background Themes Storage (PNG/JPG Uploads)
 // ----------------------------------------------------
-let customBackgrounds = [];
-try {
-  const bundledBackgrounds = path.join(__dirname, 'data', 'backgrounds.json');
-  if (fs.existsSync(bundledBackgrounds)) {
-    customBackgrounds = JSON.parse(fs.readFileSync(bundledBackgrounds, 'utf-8'));
-  } else if (fs.existsSync(BACKGROUNDS_FILE)) {
-    customBackgrounds = JSON.parse(fs.readFileSync(BACKGROUNDS_FILE, 'utf-8'));
-  }
-} catch (err) {
-  console.warn('Backgrounds load fallback to empty array:', err.message);
-  customBackgrounds = [];
-}
-
 function saveCustomBackgrounds() {
   try {
     fs.writeFileSync(BACKGROUNDS_FILE, JSON.stringify(customBackgrounds, null, 2), 'utf-8');
@@ -159,8 +212,33 @@ app.get('/mediawall', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// System Status API
+app.get('/api/status', (req, res) => {
+  res.json({
+    status: 'ok',
+    supabase: {
+      configured: supabase.isSupabaseConfigured(),
+      bucket: process.env.SUPABASE_BUCKET || 'mediaart-assets'
+    },
+    counts: {
+      templates: getCombinedTemplates().length,
+      customTemplates: customTemplates.length,
+      backgrounds: customBackgrounds.length
+    },
+    uptime: Math.floor(process.uptime())
+  });
+});
+
 // Config API
-app.get('/api/config', (req, res) => {
+app.get('/api/config', async (req, res) => {
+  if (supabase.isSupabaseConfigured()) {
+    try {
+      const dbCfg = await supabase.dbGetConfig();
+      if (dbCfg && typeof dbCfg === 'object') {
+        currentConfig = { ...DEFAULT_CONFIG, ...dbCfg };
+      }
+    } catch (e) {}
+  }
   res.json(currentConfig);
 });
 
@@ -174,11 +252,19 @@ app.post('/api/config', (req, res) => {
 });
 
 // Templates API
-app.get('/api/templates', (req, res) => {
+app.get('/api/templates', async (req, res) => {
+  if (supabase.isSupabaseConfigured()) {
+    try {
+      const dbTmpls = await supabase.dbGetTemplates();
+      if (Array.isArray(dbTmpls)) {
+        customTemplates = dbTmpls.filter(t => !t.isBuiltin);
+      }
+    } catch (e) {}
+  }
   res.json({ success: true, templates: getCombinedTemplates() });
 });
 
-app.post('/api/templates', (req, res) => {
+app.post('/api/templates', async (req, res) => {
   const { name, icon, motionType, imageUrl, dataUrl, svgData, image, skeleton } = req.body;
   let imageSource = imageUrl || dataUrl || image;
 
@@ -194,18 +280,38 @@ app.post('/api/templates', (req, res) => {
     return res.status(400).json({ success: false, error: '도안 이름과 이미지 파일이 필요합니다.' });
   }
 
+  const id = 'tmpl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  let finalImageUrl = imageSource;
+
+  // 1. Supabase Storage upload for high-speed CDN public URL
+  if (supabase.isSupabaseConfigured()) {
+    try {
+      const uploadedUrl = await supabase.uploadDataUrlToStorage(imageSource, 'templates', id);
+      if (uploadedUrl) {
+        finalImageUrl = uploadedUrl;
+      }
+    } catch (e) {
+      console.warn('[Supabase Storage] Template upload failed, keeping original:', e.message);
+    }
+  }
+
   const newTemplate = {
-    id: 'tmpl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+    id,
     name: name.trim(),
     icon: icon ? icon.trim() : '🎨',
     motionType: motionType || 'walk',
-    imageUrl: imageSource,
+    imageUrl: finalImageUrl,
     skeleton: skeleton || null,
     isBuiltin: false,
     createdAt: Date.now()
   };
 
-  customTemplates.push(newTemplate);
+  // 2. Persist to Supabase Database
+  if (supabase.isSupabaseConfigured()) {
+    await supabase.dbAddTemplate(newTemplate);
+  }
+
+  customTemplates.unshift(newTemplate);
   saveCustomTemplates();
 
   const allTemplates = getCombinedTemplates();
@@ -217,13 +323,17 @@ app.post('/api/templates', (req, res) => {
   res.json({ success: true, template: newTemplate, templates: allTemplates });
 });
 
-app.delete('/api/templates/:id', (req, res) => {
+app.delete('/api/templates/:id', async (req, res) => {
   const { id } = req.params;
   const initialLen = customTemplates.length;
   customTemplates = customTemplates.filter(t => t.id !== id);
 
-  if (customTemplates.length === initialLen) {
+  if (customTemplates.length === initialLen && !supabase.isSupabaseConfigured()) {
     return res.status(404).json({ success: false, error: '해당 도안을 찾을 수 없거나 기본 제공 도안입니다.' });
+  }
+
+  if (supabase.isSupabaseConfigured()) {
+    await supabase.dbDeleteTemplate(id);
   }
 
   saveCustomTemplates();
@@ -239,11 +349,19 @@ app.delete('/api/templates/:id', (req, res) => {
 // ----------------------------------------------------
 // Custom Background Themes API (PNG/JPG Uploads & Management)
 // ----------------------------------------------------
-app.get('/api/backgrounds', (req, res) => {
+app.get('/api/backgrounds', async (req, res) => {
+  if (supabase.isSupabaseConfigured()) {
+    try {
+      const dbBgs = await supabase.dbGetBackgrounds();
+      if (Array.isArray(dbBgs)) {
+        customBackgrounds = dbBgs;
+      }
+    } catch (e) {}
+  }
   res.json({ success: true, backgrounds: customBackgrounds });
 });
 
-app.post('/api/backgrounds', (req, res) => {
+app.post('/api/backgrounds', async (req, res) => {
   const { name, dataUrl, atmosphere, motionType } = req.body || {};
   if (!name || !dataUrl) {
     return res.status(400).json({ success: false, error: '배경 명칭과 이미지 데이터가 필요합니다.' });
@@ -252,8 +370,18 @@ app.post('/api/backgrounds', (req, res) => {
   const id = 'bg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
   let finalUrl = dataUrl;
 
-  // Try to write image file to disk if base64 data url is provided
-  if (isFilesystemWritable && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+  // 1. Supabase Storage upload for high-speed CDN public URL
+  if (supabase.isSupabaseConfigured()) {
+    try {
+      const uploadedUrl = await supabase.uploadDataUrlToStorage(dataUrl, 'backgrounds', id);
+      if (uploadedUrl) {
+        finalUrl = uploadedUrl;
+      }
+    } catch (e) {
+      console.warn('[Supabase Storage] Background upload failed, keeping original:', e.message);
+    }
+  } else if (isFilesystemWritable && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+    // Local disk write fallback
     try {
       const match = dataUrl.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
       if (match) {
@@ -279,6 +407,11 @@ app.post('/api/backgrounds', (req, res) => {
     createdAt: Date.now()
   };
 
+  // 2. Persist to Supabase Database
+  if (supabase.isSupabaseConfigured()) {
+    await supabase.dbAddBackground(newBg);
+  }
+
   customBackgrounds.unshift(newBg);
   saveCustomBackgrounds();
 
@@ -290,15 +423,19 @@ app.post('/api/backgrounds', (req, res) => {
   res.json({ success: true, background: newBg, backgrounds: customBackgrounds });
 });
 
-app.delete('/api/backgrounds/:id', (req, res) => {
+app.delete('/api/backgrounds/:id', async (req, res) => {
   const { id } = req.params;
   const initialLen = customBackgrounds.length;
   const targetBg = customBackgrounds.find(b => b.id === id);
 
   customBackgrounds = customBackgrounds.filter(b => b.id !== id);
 
-  if (customBackgrounds.length === initialLen) {
+  if (customBackgrounds.length === initialLen && !supabase.isSupabaseConfigured()) {
     return res.status(404).json({ success: false, error: '해당 배경 테마를 찾을 수 없습니다.' });
+  }
+
+  if (supabase.isSupabaseConfigured()) {
+    await supabase.dbDeleteBackground(id);
   }
 
   // If local file was saved, remove it

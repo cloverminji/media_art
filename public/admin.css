@@ -83,6 +83,16 @@ html, body {
   box-shadow: 0 0 8px var(--success);
 }
 
+.status-indicator.cloud-synced .dot {
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+}
+
+.status-indicator.local-mode .dot {
+  background: #fbbf24;
+  box-shadow: 0 0 8px #fbbf24;
+}
+
 .preview-wall-btn {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid var(--border-color);
