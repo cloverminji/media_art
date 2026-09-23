@@ -29,11 +29,16 @@
   const toolUndo = document.getElementById('tool-undo');
   const toolClear = document.getElementById('tool-clear');
 
+  const btnDownloadDrawing = document.getElementById('btn-download-drawing');
   const btnConvert = document.getElementById('btn-convert');
   const previewModal = document.getElementById('preview-modal');
   const btnCloseModal = document.getElementById('btn-close-modal');
   const btnReEdit = document.getElementById('btn-re-edit');
   const btnSendWall = document.getElementById('btn-send-wall');
+  const btnPreviewDownload = document.getElementById('btn-preview-download');
+  const previewDownloadMenu = document.getElementById('preview-download-menu');
+  const downloadDropdownWrap = document.querySelector('.download-dropdown-wrap');
+  const kioskToast = document.getElementById('kiosk-toast');
   const loadingOverlay = document.getElementById('loading-overlay');
   const loadingStep = document.getElementById('loading-step');
 
@@ -1565,6 +1570,7 @@
   // ----------------------------------------------------
   let miniSkinnedMesh = null;
   let prevSkinnedMesh = null;
+  let previewStartTime = 0;
 
   function startMiniPreviewAnimation() {
     if (!processedCharacter || !miniCtx) return;
@@ -1638,6 +1644,7 @@
   function startPreviewAnimation() {
     if (!processedCharacter || !prevCtx) return;
     let startTime = performance.now();
+    previewStartTime = startTime;
 
     // Create or update SkinnedMesh
     if (window.SkeletalMeshEngine && processedCharacter.charImg && processedCharacter.charImg.complete) {
@@ -1809,10 +1816,185 @@
     }
     draggedJoint = null;
     hoveredJoint = null;
+    if (downloadDropdownWrap) {
+      downloadDropdownWrap.classList.remove('open');
+    }
   }
 
   btnCloseModal.addEventListener('click', closePreviewModal);
   btnReEdit.addEventListener('click', closePreviewModal);
+
+  // ----------------------------------------------------
+  // Drawing & Character File Download Engine
+  // ----------------------------------------------------
+  let toastTimer = null;
+  function showToast(message, duration = 2400) {
+    if (!kioskToast) return;
+    kioskToast.textContent = message;
+    kioskToast.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      kioskToast.classList.remove('show');
+    }, duration);
+  }
+
+  function triggerDownload(dataUrl, filename) {
+    if (!dataUrl) return;
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  function getFormatDate() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  }
+
+  // 1. High-Resolution Drawing Composite Export (White Background + Template + Color strokes)
+  function getFullDrawingDataUrl() {
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = drawingCanvas.width;
+    exportCanvas.height = drawingCanvas.height;
+    const expCtx = exportCanvas.getContext('2d');
+
+    // 1. Solid pure white background
+    expCtx.fillStyle = '#ffffff';
+    expCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+    if (currentMode === 'template') {
+      // 2. White base inside template shape
+      drawTemplateWhiteBase(expCtx, exportCanvas.width, exportCanvas.height);
+      // 3. User colored strokes
+      expCtx.drawImage(drawingCanvas, 0, 0);
+      // 4. Crisp black line art
+      drawTemplateOutline(expCtx, exportCanvas.width, exportCanvas.height);
+    } else {
+      // Free drawing mode strokes
+      expCtx.drawImage(drawingCanvas, 0, 0);
+    }
+
+    return exportCanvas.toDataURL('image/png');
+  }
+
+  // 2. Animated Motion Pose Snapshot Export (Clean Skinned Character Deformed Pose)
+  function getMotionSnapshotDataUrl() {
+    if (!processedCharacter) return null;
+    const snapCanvas = document.createElement('canvas');
+    snapCanvas.width = previewCanvas.width;
+    snapCanvas.height = previewCanvas.height;
+    const sCtx = snapCanvas.getContext('2d');
+
+    const cx = snapCanvas.width / 2;
+    const cy = snapCanvas.height / 2;
+    const motion = (processedCharacter && processedCharacter.motionType) || 'walk';
+    const scale = 160 / Math.max(processedCharacter.width, processedCharacter.height);
+    const dw = processedCharacter.width * scale;
+    const dh = processedCharacter.height * scale;
+
+    sCtx.save();
+    sCtx.translate(cx, cy);
+
+    if (window.SkeletalMeshEngine && prevSkinnedMesh) {
+      const t = (performance.now() - (previewStartTime || performance.now())) / 1000;
+      const solvedPose = window.SkeletalMeshEngine.solveSkeletonPose(
+        processedCharacter.skeleton,
+        motion,
+        t
+      );
+      // Clean mesh render without overlay bones
+      prevSkinnedMesh.draw(sCtx, solvedPose, -dw / 2, -dh / 2, dw, dh);
+    } else if (processedCharacter.charImg && processedCharacter.charImg.complete) {
+      sCtx.drawImage(processedCharacter.charImg, -dw / 2, -dh / 2, dw, dh);
+    } else {
+      sCtx.drawImage(previewCanvas, -cx, -cy);
+    }
+    sCtx.restore();
+
+    return snapCanvas.toDataURL('image/png');
+  }
+
+  // Feature 2: Canvas Bottom Bar - Drawing Download Button
+  if (btnDownloadDrawing) {
+    btnDownloadDrawing.addEventListener('click', () => {
+      // Check if anything drawn
+      const drawnPixels = drawCtx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height).data;
+      let hasColor = false;
+      for (let i = 3; i < drawnPixels.length; i += 4) {
+        if (drawnPixels[i] > 20) {
+          hasColor = true;
+          break;
+        }
+      }
+
+      if (!hasColor && currentMode === 'free') {
+        alert('캔버스에 그림을 먼저 그려주세요!');
+        return;
+      }
+
+      const dataUrl = getFullDrawingDataUrl();
+      const tmplName = currentMode === 'template' ? currentTemplate : 'sketch';
+      const filename = `drawing_${tmplName}_${getFormatDate()}.png`;
+      triggerDownload(dataUrl, filename);
+      showToast('💾 그림 파일이 다운로드되었습니다!');
+    });
+  }
+
+  // Feature 3: Motion Preview Modal - Download Button & Options
+  if (btnPreviewDownload && downloadDropdownWrap) {
+    btnPreviewDownload.addEventListener('click', (e) => {
+      e.stopPropagation();
+      downloadDropdownWrap.classList.toggle('open');
+    });
+
+    // Close when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!downloadDropdownWrap.contains(e.target)) {
+        downloadDropdownWrap.classList.remove('open');
+      }
+    });
+
+    // Handle each download option click
+    const optButtons = downloadDropdownWrap.querySelectorAll('.dl-opt-btn');
+    optButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        downloadDropdownWrap.classList.remove('open');
+        const dlType = btn.dataset.dlType;
+        const tmplName = (processedCharacter && processedCharacter.templateId) || currentTemplate || 'character';
+        const dateStr = getFormatDate();
+
+        if (dlType === 'drawing') {
+          // 1. 전체 채색 그림
+          const dataUrl = getFullDrawingDataUrl();
+          triggerDownload(dataUrl, `drawing_${tmplName}_${dateStr}.png`);
+          showToast('🎨 채색 그림이 저장되었습니다!');
+        } else if (dlType === 'character') {
+          // 2. 투명 배경 AI 캐릭터
+          if (processedCharacter && processedCharacter.dataUrl) {
+            triggerDownload(processedCharacter.dataUrl, `character_${tmplName}_${dateStr}.png`);
+            showToast('✨ AI 캐릭터가 저장되었습니다!');
+          } else {
+            const dataUrl = getFullDrawingDataUrl();
+            triggerDownload(dataUrl, `character_${tmplName}_${dateStr}.png`);
+            showToast('💾 그림 파일이 저장되었습니다!');
+          }
+        } else if (dlType === 'motion') {
+          // 3. 모션 포즈 스냅샷
+          const snapUrl = getMotionSnapshotDataUrl();
+          if (snapUrl) {
+            triggerDownload(snapUrl, `motion_${tmplName}_${dateStr}.png`);
+            showToast('🎬 모션 포즈 스냅샷이 저장되었습니다!');
+          } else {
+            showToast('⚠️ 모션 캡처를 생성할 수 없습니다.');
+          }
+        }
+      });
+    });
+  }
 
   // ----------------------------------------------------
   // PRD P0-1 / P0-3: One-Click Send to Media Wall (< 1 second)

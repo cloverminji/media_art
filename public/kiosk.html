@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Pretendard:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="kiosk.css">
+  <link rel="stylesheet" href="kiosk.css?v=2.3.0">
 </head>
 <body>
   <div class="kiosk-app">
@@ -23,7 +23,7 @@
       <!-- Mode Selection Tabs (PRD P0-1: Hybrid Mode) -->
       <div class="mode-tabs">
         <button id="tab-template" class="tab-btn active">
-          <span>🐬</span> 관광지 도안 채색
+          <span>🐬</span> 도안 채색
         </button>
         <button id="tab-free" class="tab-btn">
           <span>✏️</span> 백지 자유 드로잉
@@ -113,10 +113,16 @@
         <!-- Bottom Action Bar -->
         <div class="bottom-bar">
           <p class="guide-text">도안을 예쁘게 채색한 후 <strong>[AI 애니메이션 변환]</strong>을 눌러보세요!</p>
-          <button id="btn-convert" class="btn-primary">
-            <span class="btn-icon">⚡</span>
-            <span>AI 애니메이션 변환</span>
-          </button>
+          <div class="bottom-actions">
+            <button id="btn-download-drawing" class="btn-download" title="채색한 그림을 파일로 저장합니다">
+              <span class="btn-icon">💾</span>
+              <span>그림 저장</span>
+            </button>
+            <button id="btn-convert" class="btn-primary">
+              <span class="btn-icon">⚡</span>
+              <span>AI 애니메이션 변환</span>
+            </button>
+          </div>
         </div>
       </section>
     </main>
@@ -284,6 +290,36 @@
 
           <div class="modal-footer">
             <button id="btn-preview-back" class="btn-secondary">◀ 관절 조절로 이동</button>
+            <div class="download-dropdown-wrap">
+              <button id="btn-preview-download" class="btn-download-preview" title="이미지 파일 다운로드">
+                <span>💾</span>
+                <span>그림 다운로드</span>
+                <span class="dropdown-caret">▾</span>
+              </button>
+              <div id="preview-download-menu" class="download-popover">
+                <button type="button" class="dl-opt-btn" data-dl-type="drawing">
+                  <span class="dl-icon">🎨</span>
+                  <div class="dl-text">
+                    <strong>채색 그림 저장</strong>
+                    <small>도안과 채색이 포함된 전체 이미지 (PNG)</small>
+                  </div>
+                </button>
+                <button type="button" class="dl-opt-btn" data-dl-type="character">
+                  <span class="dl-icon">✨</span>
+                  <div class="dl-text">
+                    <strong>AI 캐릭터 저장</strong>
+                    <small>배경이 투명하게 분리된 캐릭터 (PNG)</small>
+                  </div>
+                </button>
+                <button type="button" class="dl-opt-btn" data-dl-type="motion">
+                  <span class="dl-icon">🎬</span>
+                  <div class="dl-text">
+                    <strong>모션 포즈 캡처</strong>
+                    <small>현재 움직이는 애니메이션 포즈 (PNG)</small>
+                  </div>
+                </button>
+              </div>
+            </div>
             <button id="btn-send-wall" class="btn-send">
               <span class="rocket">🚀</span>
               <span>대형 스크린으로 전송</span>
@@ -299,9 +335,12 @@
       <div class="loading-title">AI가 그림의 관절과 뼈대를 추출하고 있습니다...</div>
       <div class="loading-step" id="loading-step">1/3 배경 분리 및 누끼 작업 중...</div>
     </div>
+
+    <!-- Toast Notification -->
+    <div id="kiosk-toast" class="kiosk-toast"></div>
   </div>
 
   <script src="skeletal-mesh.js?v=2.2.0"></script>
-  <script src="kiosk.js?v=2.2.0"></script>
+  <script src="kiosk.js?v=2.3.0"></script>
 </body>
 </html>
