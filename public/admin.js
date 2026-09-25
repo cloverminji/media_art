@@ -1079,9 +1079,41 @@
   const adJointCount = document.getElementById('ad-joint-count');
   const adSourceFilename = document.getElementById('ad-source-filename');
   const adRiggingStatus = document.getElementById('ad-rigging-status');
+  const adResolutionStatus = document.getElementById('ad-resolution-status');
   const adMotionSelect = document.getElementById('ad-motion-select');
   const btnAdSpawn = document.getElementById('btn-ad-spawn');
   const btnAdAddTemplate = document.getElementById('btn-ad-add-template');
+
+  // 드로잉 키오스크 스크린 전송 이미지 기준 규격 (800x600 캔버스 기준 장축 800px)
+  const KIOSK_TARGET_MAX_DIM = 800;
+
+  function upscaleToKioskSpec(sourceElement, srcW, srcH, maxDim = KIOSK_TARGET_MAX_DIM) {
+    const curMax = Math.max(srcW, srcH);
+    // 키오스크 전송 이미지 크기에 맞추어 업스케일 (작은 에셋인 경우 키오스크 규격인 800px로 확대)
+    const scale = curMax > 0 ? (maxDim / curMax) : 1;
+    const targetW = Math.max(1, Math.round(srcW * scale));
+    const targetH = Math.max(1, Math.round(srcH * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    // 고품질 보간 스케일링 필터
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(sourceElement, 0, 0, targetW, targetH);
+
+    return {
+      canvas,
+      dataUrl: canvas.toDataURL('image/png'),
+      width: targetW,
+      height: targetH,
+      scaleX: targetW / srcW,
+      scaleY: targetH / srcH,
+      upscaleFactor: scale
+    };
+  }
 
   let importedChar = null; // { dataUrl, skeleton, motionType, name, width, height, charImg }
   let adAnimId = null;
@@ -1203,48 +1235,57 @@
           const vw = video.videoWidth || 320;
           const vh = video.videoHeight || 320;
 
-          // Extract first frame as clean line-art poster
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = vw;
-          tempCanvas.height = vh;
-          const tCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-          tCtx.drawImage(video, 0, 0, vw, vh);
+          // 1. Extract first frame as clean line-art poster
+          const rawFrameCanvas = document.createElement('canvas');
+          rawFrameCanvas.width = vw;
+          rawFrameCanvas.height = vh;
+          const rCtx = rawFrameCanvas.getContext('2d', { willReadFrequently: true });
+          rCtx.drawImage(video, 0, 0, vw, vh);
 
-          // Remove white background for poster
-          const frameImgData = tCtx.getImageData(0, 0, vw, vh);
+          // 2. Remove white background for poster
+          const frameImgData = rCtx.getImageData(0, 0, vw, vh);
           const d = frameImgData.data;
           for (let i = 0; i < d.length; i += 4) {
             if (d[i] > 215 && d[i + 1] > 215 && d[i + 2] > 215) {
               d[i + 3] = 0;
             }
           }
-          tCtx.putImageData(frameImgData, 0, 0);
-          const posterDataUrl = tempCanvas.toDataURL('image/png');
-          const posterImg = new Image();
-          posterImg.src = posterDataUrl;
+          rCtx.putImageData(frameImgData, 0, 0);
 
-          const finalSkeleton = normalizeSkeletonToImage(null, vw, vh);
+          // 3. 드로잉 키오스크의 스크린 전송 이미지 규격(장축 800px)에 맞춰 고품질 업스케일
+          const upscaled = upscaleToKioskSpec(rawFrameCanvas, vw, vh, KIOSK_TARGET_MAX_DIM);
+          const targetW = upscaled.width;
+          const targetH = upscaled.height;
+
+          const posterImg = new Image();
+          posterImg.src = upscaled.dataUrl;
+
+          // 4. 관절 뼈대도 키오스크 전송 크기에 맞게 생성
+          const finalSkeleton = normalizeSkeletonToImage(null, targetW, targetH);
 
           importedChar = {
             mediaType: 'video',
-            dataUrl: posterDataUrl, // Clean lineart poster for templates & fallback
-            videoUrl: videoDataUrl, // Full MP4 video for media wall
+            dataUrl: upscaled.dataUrl, // 키오스크 규격 고해상도(800px) 포스터
+            videoUrl: videoDataUrl,    // Full MP4 비디오
             skeleton: finalSkeleton,
             motionType: adMotionSelect.value || 'dance_full',
             name: (videoFile ? videoFile.name : 'Animated Drawings Video').replace(/\.[^/.]+$/, ''),
-            width: vw,
-            height: vh,
+            width: targetW,
+            height: targetH,
             videoEl: video,
             charImg: posterImg,
             chromaCanvas: document.createElement('canvas')
           };
-          importedChar.chromaCanvas.width = vw;
-          importedChar.chromaCanvas.height = vh;
+          importedChar.chromaCanvas.width = targetW;
+          importedChar.chromaCanvas.height = targetH;
 
           adCharName.textContent = importedChar.name;
-          adSourceFilename.textContent = sourceInfo || 'Meta Animated Drawings MP4 영상';
-          adRiggingStatus.textContent = 'Animated Drawings MP4 영상 루프 로드 완료';
+          adSourceFilename.textContent = `${sourceInfo || 'Meta Animated Drawings MP4 영상'} (${targetW}×${targetH}px)`;
+          adRiggingStatus.textContent = `Animated Drawings MP4 영상 루프 로드 완료 (키오스크 규격 ${targetW}×${targetH}px 최적화)`;
           adJointCount.textContent = 'MP4 Video Loop';
+          if (adResolutionStatus) {
+            adResolutionStatus.textContent = `${targetW}×${targetH}px (키오스크 규격 동기화)`;
+          }
 
           adPreviewCard.style.display = 'flex';
           startAdPreviewLoop();
@@ -1278,58 +1319,84 @@
       // Load image to get dimensions
       const img = new Image();
       img.onload = () => {
-        const w = img.naturalWidth;
-        const h = img.naturalHeight;
+        const origW = img.naturalWidth || 320;
+        const origH = img.naturalHeight || 320;
 
-        // Check if image has solid white background and sanitize if needed
-        let finalDataUrl = imageDataUrl;
-        let finalImg = img;
+        // 1. 흰색 배경 검사 및 누끼 처리
+        let cleanCanvas = document.createElement('canvas');
+        cleanCanvas.width = origW;
+        cleanCanvas.height = origH;
+        const cCtx = cleanCanvas.getContext('2d', { willReadFrequently: true });
+        cCtx.drawImage(img, 0, 0, origW, origH);
 
-        try {
-          const testCanvas = document.createElement('canvas');
-          testCanvas.width = Math.min(w, 400);
-          testCanvas.height = Math.min(h, 400);
-          const tCtx = testCanvas.getContext('2d', { willReadFrequently: true });
-          tCtx.drawImage(img, 0, 0, testCanvas.width, testCanvas.height);
-          const tData = tCtx.getImageData(0, 0, testCanvas.width, testCanvas.height).data;
-          // Sample corner pixels
-          const corners = [0, (testCanvas.width - 1) * 4, ((testCanvas.height - 1) * testCanvas.width) * 4, (testCanvas.height * testCanvas.width - 1) * 4];
-          const isWhiteBg = corners.every(idx => tData[idx] > 230 && tData[idx + 1] > 230 && tData[idx + 2] > 230 && tData[idx + 3] > 200);
+        const tData = cCtx.getImageData(0, 0, origW, origH).data;
+        const corners = [0, (origW - 1) * 4, ((origH - 1) * origW) * 4, ((origH * origW) - 1) * 4];
+        const isWhiteBg = corners.every(idx => tData[idx] > 230 && tData[idx + 1] > 230 && tData[idx + 2] > 230 && tData[idx + 3] > 200);
 
-          if (isWhiteBg) {
-            finalDataUrl = processTemplateImage(img, { removeWhiteBg: true, threshold: 225 });
-            finalImg = new Image();
-            finalImg.src = finalDataUrl;
+        if (isWhiteBg) {
+          for (let i = 0; i < tData.length; i += 4) {
+            if (tData[i] > 225 && tData[i + 1] > 225 && tData[i + 2] > 225) {
+              tData[i + 3] = 0;
+            }
           }
-        } catch (e) {
-          console.warn('Corner check skipped:', e);
+          cCtx.putImageData(tData, 0, 0);
         }
 
-        // Scale/adjust skeleton if given in absolute or normalized format
-        const finalSkeleton = normalizeSkeletonToImage(parsedSkeleton, w, h);
+        // 2. 드로잉 키오스크의 스크린 전송 이미지 규격(장축 800px)에 맞춰 고품질 업스케일
+        const upscaled = upscaleToKioskSpec(cleanCanvas, origW, origH, KIOSK_TARGET_MAX_DIM);
+        const targetW = upscaled.width;
+        const targetH = upscaled.height;
+        const scaleX = upscaled.scaleX;
+        const scaleY = upscaled.scaleY;
 
-        importedChar = {
-          mediaType: 'image',
-          dataUrl: finalDataUrl,
-          videoUrl: null,
-          skeleton: finalSkeleton,
-          motionType: adMotionSelect.value || 'walk',
-          name: imageFile ? imageFile.name.replace(/\.[^/.]+$/, '') : 'Animated Character',
-          width: w,
-          height: h,
-          charImg: finalImg
+        // 3. 관절 뼈대 좌표를 키오스크 전송 크기에 맞춰 정밀 비례 스케일링
+        const scaledJointMap = {};
+        if (parsedSkeleton) {
+          for (const k in parsedSkeleton) {
+            if (parsedSkeleton[k] && typeof parsedSkeleton[k].x === 'number' && typeof parsedSkeleton[k].y === 'number') {
+              scaledJointMap[k] = {
+                x: parsedSkeleton[k].x * scaleX,
+                y: parsedSkeleton[k].y * scaleY
+              };
+            }
+          }
+        }
+        const finalSkeleton = normalizeSkeletonToImage(
+          Object.keys(scaledJointMap).length > 0 ? scaledJointMap : null,
+          targetW,
+          targetH
+        );
+
+        const finalImg = new Image();
+        finalImg.onload = () => {
+          importedChar = {
+            mediaType: 'image',
+            dataUrl: upscaled.dataUrl, // 키오스크 규격 고해상도(800px) 이미지
+            videoUrl: null,
+            skeleton: finalSkeleton,
+            motionType: adMotionSelect.value || 'walk',
+            name: imageFile ? imageFile.name.replace(/\.[^/.]+$/, '') : 'Animated Character',
+            width: targetW,
+            height: targetH,
+            charImg: finalImg
+          };
+
+          // Update UI details
+          adCharName.textContent = importedChar.name;
+          adSourceFilename.textContent = `${sourceInfo || 'Animated Drawings 에셋'} (${targetW}×${targetH}px)`;
+          adRiggingStatus.textContent = parsedSkeleton
+            ? `Meta Animated Drawings 관절 매핑 완료 (${targetW}×${targetH}px 키오스크 규격 동기화)`
+            : `AI 관절 리깅 적용됨 (${targetW}×${targetH}px 키오스크 규격 동기화)`;
+          adJointCount.textContent = '13 Keypoints';
+          if (adResolutionStatus) {
+            adResolutionStatus.textContent = `${targetW}×${targetH}px (키오스크 규격 동기화)`;
+          }
+
+          adPreviewCard.style.display = 'flex';
+          startAdPreviewLoop();
+          adPreviewCard.scrollIntoView({ behavior: 'smooth' });
         };
-
-        // Update UI details
-        adCharName.textContent = importedChar.name;
-        adSourceFilename.textContent = sourceInfo || 'Animated Drawings 에셋';
-        adRiggingStatus.textContent = parsedSkeleton ? 'Meta Animated Drawings 관절 매핑 완료' : 'AI 인체 관절 자동 리깅 적용됨';
-        adJointCount.textContent = '13 Keypoints';
-
-        adPreviewCard.style.display = 'flex';
-        startAdPreviewLoop();
-
-        adPreviewCard.scrollIntoView({ behavior: 'smooth' });
+        finalImg.src = upscaled.dataUrl;
       };
       img.src = imageDataUrl;
 

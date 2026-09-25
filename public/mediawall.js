@@ -224,9 +224,11 @@
       const w = window.innerWidth;
       const h = window.innerHeight;
       this.x = typeof data.x === 'number' ? data.x : (Math.random() * (w - 300) + 150);
-      this.y = typeof data.y === 'number' ? data.y : ((this.motionType === 'swim' || currentTheme === 'ocean' || currentTheme === 'space') 
-               ? Math.random() * (h - 300) + 150 
-               : h - 180); // Walk along ground in forest/earth
+      // 화면 가운데(중앙) 영역 배치: 화면 높이의 약 40%~60% 부근에 자연스럽게 분포
+      const centerBaseY = (h - 180) * 0.5;
+      const depthOffset = (Math.random() - 0.5) * Math.min(160, h * 0.22);
+      const defaultY = centerBaseY + depthOffset;
+      this.y = typeof data.y === 'number' ? data.y : defaultY;
       this.baseY = typeof data.baseY === 'number' ? data.baseY : this.y;
       this.vx = typeof data.vx === 'number' ? data.vx : ((Math.random() > 0.5 ? 1 : -1) * (Math.random() * 55 + 45)); // pixels per sec
       this.vy = typeof data.vy === 'number' ? data.vy : 0;
@@ -392,7 +394,15 @@
 
       // Dynamic motion physics per motionType & theme
       this.phase += dt * 3.5;
-      const ground = h - this.height - 40;
+
+      // 화면 가운데 영역을 무대로 캐릭터들이 동작하도록 기준 높이 설정
+      const charH = this.height || 160;
+      const minCenterY = h * 0.28;
+      const maxCenterY = h * 0.72 - charH;
+      if (!this.baseY || this.baseY < minCenterY || this.baseY > maxCenterY) {
+        this.baseY = (h - charH) * 0.5 + (Math.random() - 0.5) * Math.min(140, h * 0.18);
+      }
+      const ground = this.baseY;
 
       if (this.motionType === 'dance_full' || this.motionType === 'dance') {
         // 1. 전신 댄스: 리드미컬 상하좌우 그루브, 비트 탄성 바운스
